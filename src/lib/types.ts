@@ -34,6 +34,14 @@ export interface Food {
   carbs: number;
   fat: number;
   unit: 'g' | 'ml';
+  /** Detalle opcional por 100 g/ml (viene de la etiqueta del producto). */
+  fiber?: number;
+  sugars?: number;
+  satFat?: number;
+  /** Sodio en miligramos por 100 g/ml. */
+  sodium?: number;
+  /** URL de la foto del producto. */
+  image?: string;
   portion?: { label: string; grams: number };
   barcode?: string;
   source: 'base' | 'off' | 'custom' | 'ai' | 'quick';

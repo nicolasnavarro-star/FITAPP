@@ -169,11 +169,11 @@ export default function Scanner() {
         <div className="card col">
           <h2 className="card-title">{state.name ? 'Producto sin datos nutricionales' : 'Producto no encontrado'}</h2>
           <p className="small muted">
-            {state.name ? `«${state.name}» está en Open Food Facts, pero sin calorías registradas.` : `El código ${state.code} no está en Open Food Facts.`} Puedes crearlo con los datos
-            de la etiqueta y la próxima vez se reconocerá al escanearlo.
+            {state.name ? `«${state.name}» está en Open Food Facts, pero sin calorías registradas.` : `El código ${state.code} no está en Open Food Facts.`} Agrégalo sacando
+            una foto a su tabla nutricional: se completan los valores exactos y la próxima vez se reconocerá al escanearlo.
           </p>
           <button className="btn" onClick={() => replace(`/custom-food?meal=${meal}&barcode=${state.code}${state.name ? `&name=${encodeURIComponent(state.name)}` : ''}`)}>
-            Crear alimento con este código
+            Agregar con foto de la etiqueta
           </button>
           <button className="btn secondary" onClick={restart}>
             <RefreshCw size={18} /> Escanear otro

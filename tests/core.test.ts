@@ -90,6 +90,14 @@ describe('alimentos', () => {
     expect(food).toMatchObject({ name: 'Yogur natural', brand: 'Marca', kcal: 61, protein: 3.5, unit: 'g', barcode: '123' });
     expect(food.portion?.grams).toBe(125);
     expect(mapOffProduct({ product_name: 'Sin datos', nutriments: {} })).toBeNull();
+    const full = mapOffProduct({
+      code: '9',
+      product_name: 'Cereal',
+      image_front_small_url: 'https://images.openfoodfacts.org/x.jpg',
+      nutriments: { 'energy-kcal_100g': 380, fiber_100g: 7.25, sugars_100g: 21, 'saturated-fat_100g': 0.5, salt_100g: 1 },
+    })!;
+    expect(full).toMatchObject({ fiber: 7.3, sugars: 21, satFat: 0.5, sodium: 400, image: 'https://images.openfoodfacts.org/x.jpg' });
+    expect(mapOffProduct({ product_name: 'Raro', image_front_small_url: 'javascript:alert(1)', nutriments: { 'energy-kcal_100g': 1 } })?.image).toBeUndefined();
     expect(mapOffProduct({ product_name: 'En kJ', nutriments: { energy_100g: 418.4 } })?.kcal).toBe(100);
     expect(mapOffProduct({ product_name: 'Jugo', quantity: '1 L', nutriments: { 'energy-kcal_100g': 45 } })?.unit).toBe('ml');
   });

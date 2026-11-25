@@ -97,27 +97,28 @@ export default function Train() {
         </button>
       </div>
 
-      <div className="card row">
-        <span className="badge">
-          <CalendarCheck size={20} />
-        </span>
-        <div className="grow">
-          <h2 className="card-title num">
-            {thisWeek} de {plan.daysPerWeek} sesiones esta semana
-          </h2>
-          <p className="small muted">
-            {SPLIT_NAMES[plan.daysPerWeek]} · {EQUIPMENT_LABELS[plan.equipment].label} · {LEVEL_LABELS[plan.level].label}
+      <div className="hero col" style={{ gap: 12 }}>
+        <div className="row spread">
+          <span className="label">{active ? 'En curso' : 'Siguiente sesión'}</span>
+          <span className="label num row" style={{ gap: 6 }}>
+            <CalendarCheck size={15} /> {thisWeek} de {plan.daysPerWeek} esta semana
+          </span>
+        </div>
+        <div>
+          <h2 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em' }}>{active ? active.dayName : plan.days[nextIdx].name}</h2>
+          <p className="small" style={{ color: 'rgba(255,255,255,0.78)' }}>
+            {(active ? active.items : plan.days[nextIdx].exercises).length} ejercicios · {SPLIT_NAMES[plan.daysPerWeek]} · {EQUIPMENT_LABELS[plan.equipment].label} · {LEVEL_LABELS[plan.level].label}
           </p>
         </div>
+        <div className="progress-track" role="progressbar" aria-label="Sesiones de la semana" aria-valuenow={thisWeek} aria-valuemax={plan.daysPerWeek}>
+          <div style={{ width: `${Math.min(100, (thisWeek / plan.daysPerWeek) * 100)}%` }} />
+        </div>
+        <button className="btn" onClick={() => begin(nextIdx)}>
+          <Play size={18} /> {active ? 'Continuar entrenamiento' : 'Empezar ahora'}
+        </button>
       </div>
 
       <EquipmentCard />
-
-      {active && (
-        <button className="btn" onClick={() => push('/workout')}>
-          <Play size={18} /> Continuar: {active.dayName}
-        </button>
-      )}
 
       {plan.days.map((day, di) => (
         <div className="card col" key={di}>
@@ -148,7 +149,7 @@ export default function Train() {
           </div>
           {day.finisher && <p className="xs muted">{day.finisher}</p>}
           {!active && (
-            <button className={`btn ${di === nextIdx ? '' : 'secondary'}`} onClick={() => begin(di)}>
+            <button className="btn secondary" onClick={() => begin(di)}>
               <Play size={18} /> Empezar
             </button>
           )}

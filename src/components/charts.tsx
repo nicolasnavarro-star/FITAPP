@@ -1,49 +1,48 @@
 import { useRef, useState } from 'react';
 import { clamp, fmt } from '../lib/util';
 
-/** Anillo de calorías: progreso de lo consumido frente a la meta. */
-export function Ring({ value, target, size = 168 }: { value: number; target: number; size?: number }) {
-  const stroke = 14;
+/** Anillo de progreso: valor frente a meta. */
+export function Ring({
+  value,
+  target,
+  size = 168,
+  stroke = 14,
+  color = 'var(--accent)',
+  track = 'var(--track)',
+  overColor = 'var(--critical)',
+  label,
+}: {
+  value: number;
+  target: number;
+  size?: number;
+  stroke?: number;
+  color?: string;
+  track?: string;
+  overColor?: string;
+  label: string;
+}) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const over = value > target;
   const pct = target > 0 ? clamp(value / target, 0, 1) : 0;
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${fmt(value)} de ${fmt(target)} kcal`}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--track)" strokeWidth={stroke} />
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={label}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke} />
       {pct > 0 && (
         <circle
           cx={size / 2}
           cy={size / 2}
           r={r}
           fill="none"
-          stroke={over ? 'var(--critical)' : 'var(--accent)'}
+          stroke={over ? overColor : color}
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={`${c * pct} ${c}`}
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          style={{ transition: 'stroke-dasharray 0.4s' }}
+          style={{ transition: 'stroke-dasharray 0.45s ease-out' }}
         />
       )}
     </svg>
-  );
-}
-
-export function MacroMeter({ label, value, target, color }: { label: string; value: number; target: number; color: string }) {
-  const pct = target > 0 ? clamp((value / target) * 100, 0, 100) : 0;
-  return (
-    <div className="macro">
-      <div className="top">
-        <span className="dot" style={{ background: color }} />
-        <span>{label}</span>
-      </div>
-      <div className="meter" role="progressbar" aria-label={label} aria-valuenow={Math.round(value)} aria-valuemax={target}>
-        <div style={{ width: `${pct}%`, background: color }} />
-      </div>
-      <span className="xs muted num">
-        {fmt(value)} / {fmt(target)} g
-      </span>
-    </div>
   );
 }
 
@@ -136,6 +135,13 @@ export function LineChart({
             </text>
           </g>
         )}
+        <defs>
+          <linearGradient id="line-area" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="var(--accent)" stopOpacity={0.2} />
+            <stop offset="1" stopColor="var(--accent)" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        {points.length > 1 && <path d={`${path} L${sx(xMax).toFixed(1)},${H - pad.b} L${sx(xMin).toFixed(1)},${H - pad.b} Z`} fill="url(#line-area)" />}
         <path d={path} fill="none" stroke="var(--accent)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
         {points.length <= 14 &&
           points.map((p, i) => <circle key={i} cx={sx(p.x)} cy={sy(p.y)} r={3} fill="var(--accent)" stroke="var(--surface)" strokeWidth={2} />)}

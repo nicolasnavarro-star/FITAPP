@@ -1,9 +1,12 @@
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor, SystemBars, SystemBarsStyle } from '@capacitor/core';
-import { Dumbbell, TrendingUp, User, Utensils } from 'lucide-react';
-import { useEffect } from 'react';
-import { Toast } from './components/ui';
-import { canGoBack, replace, useRoute } from './router';
+import { Camera, Dumbbell, Plus, ScanBarcode, Search, TrendingUp, User, Utensils, Zap } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Sheet, Toast } from './components/ui';
+import { MEALS, defaultMeal } from './lib/meals';
+import type { MealId } from './lib/types';
+import { friendlyDate } from './lib/util';
+import { canGoBack, push, replace, useRoute } from './router';
 import AddFood from './screens/AddFood';
 import AiSettings from './screens/AiSettings';
 import CustomFood from './screens/CustomFood';
@@ -19,7 +22,7 @@ import TargetsScreen from './screens/Targets';
 import Today from './screens/Today';
 import Train from './screens/Train';
 import Workout from './screens/Workout';
-import { useStore } from './store';
+import { useStore, useUi } from './store';
 
 const TABS = [
   { path: '/', label: 'Diario', icon: Utensils },
@@ -53,6 +56,53 @@ function useAndroidBackButton() {
       void handle.then((h) => h.remove());
     };
   }, []);
+}
+
+const ADD_ACTIONS = [
+  { path: '/add', icon: Search, title: 'Buscar', desc: 'Alimentos, productos o búsqueda con IA', extra: '' },
+  { path: '/scan', icon: ScanBarcode, title: 'Escanear', desc: 'Código de barras del envase', extra: '' },
+  { path: '/photo', icon: Camera, title: 'Foto con IA', desc: 'Reconoce lo que hay en tu plato', extra: '' },
+  { path: '/add', icon: Zap, title: 'Rápido', desc: 'Anota solo las calorías', extra: '&quick=1' },
+];
+
+/** Hoja del botón central: elige la comida y la forma de registrarla. */
+function AddSheet({ onClose }: { onClose: () => void }) {
+  const date = useUi((s) => s.date);
+  const [meal, setMeal] = useState<MealId>(defaultMeal());
+  return (
+    <Sheet title="Registrar comida" onClose={onClose}>
+      <p className="small muted" style={{ marginTop: -8 }}>
+        Se agregará al diario de {friendlyDate(date).toLowerCase()}.
+      </p>
+      <div className="chips" role="group" aria-label="Comida">
+        {MEALS.map((m) => (
+          <button key={m.id} className={`chip ${meal === m.id ? 'active' : ''}`} aria-pressed={meal === m.id} onClick={() => setMeal(m.id)}>
+            {m.label}
+          </button>
+        ))}
+      </div>
+      <div className="action-grid">
+        {ADD_ACTIONS.map(({ path, icon: Icon, title, desc, extra }) => (
+          <button
+            key={title}
+            className="action"
+            onClick={() => {
+              onClose();
+              push(`${path}?meal=${meal}${extra}`);
+            }}
+          >
+            <span className="badge">
+              <Icon size={20} />
+            </span>
+            <div>
+              <strong>{title}</strong>
+              <span>{desc}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+    </Sheet>
+  );
 }
 
 function Screen({ path }: { path: string }) {
@@ -97,6 +147,7 @@ export default function App() {
   useAndroidBackButton();
   const route = useRoute();
   const hasProfile = useStore((s) => s.profile !== null);
+  const [adding, setAdding] = useState(false);
 
   if (!hasProfile) {
     return (
@@ -113,7 +164,16 @@ export default function App() {
       <Screen path={route.path} />
       {isTab && (
         <nav className="tabbar">
-          {TABS.map(({ path, label, icon: Icon }) => (
+          {TABS.slice(0, 2).map(({ path, label, icon: Icon }) => (
+            <button key={path} className={`tab ${route.path === path ? 'active' : ''}`} aria-current={route.path === path} onClick={() => replace(path)}>
+              <Icon size={22} />
+              {label}
+            </button>
+          ))}
+          <button className="fab" aria-label="Registrar comida" onClick={() => setAdding(true)}>
+            <Plus size={28} />
+          </button>
+          {TABS.slice(2).map(({ path, label, icon: Icon }) => (
             <button key={path} className={`tab ${route.path === path ? 'active' : ''}`} aria-current={route.path === path} onClick={() => replace(path)}>
               <Icon size={22} />
               {label}
@@ -121,6 +181,7 @@ export default function App() {
           ))}
         </nav>
       )}
+      {adding && <AddSheet onClose={() => setAdding(false)} />}
       <Toast />
     </div>
   );

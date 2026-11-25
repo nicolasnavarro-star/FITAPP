@@ -298,6 +298,102 @@ export function aiItemToFood(item: AiItem): Food {
   };
 }
 
+/* ---------- Búsqueda de alimentos por nombre ---------- */
+
+const LOOKUP_PROMPT = `Eres una base de datos nutricional. El usuario escribe el nombre de un alimento, plato, bebida o producto de marca
+(el usuario está en Chile, así que prioriza productos y preparaciones conocidos allí, pero acepta cualquiera).
+Devuelve entre 1 y 4 coincidencias, de la más probable a la menos, con sus valores POR 100 g (o por 100 ml si es líquido).
+Si es un producto de marca que conoces, usa los valores de su etiqueta e indica la marca; si no conoces la marca, deja "brand" vacío.
+Si el nombre es ambiguo (por ejemplo "empanada"), devuelve las variantes más comunes como coincidencias separadas.
+"unit" es "g" o "ml". "portion_label" es la porción habitual (por ejemplo "1 unidad", "1 vaso") y "portion_grams" su peso en gramos o ml.
+"sodium_mg" va en miligramos. Si no conoces un valor de fibra, azúcares, grasa saturada o sodio, usa -1.
+Si el texto no es un alimento, devuelve una lista vacía.`;
+
+const NUTRITION_FIELDS = {
+  kcal: 'number',
+  protein_g: 'number',
+  carbs_g: 'number',
+  fat_g: 'number',
+  fiber_g: 'number',
+  sugars_g: 'number',
+  sat_fat_g: 'number',
+  sodium_mg: 'number',
+} as const;
+
+const LOOKUP_SHAPE: Shape = {
+  object: {
+    foods: { array: { object: { name: 'string', brand: 'string', unit: 'string', portion_label: 'string', portion_grams: 'number', ...NUTRITION_FIELDS } } },
+  },
+};
+
+function foodFromAi(it: Record<string, unknown>, source: Food['source']): Food | null {
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const req = (v: unknown) => {
+    const x = Number(v);
+    return isFinite(x) && x >= 0 ? x : 0;
+  };
+  const opt = (v: unknown) => {
+    const x = Number(v);
+    return isFinite(x) && x >= 0 ? Math.round(x * 10) / 10 : undefined;
+  };
+  const name = str(it.name);
+  const kcal = Number(it.kcal);
+  if (!name || !isFinite(kcal) || kcal < 0 || kcal > 950) return null;
+  const grams = req(it.portion_grams);
+  const sodium = opt(it.sodium_mg);
+  return {
+    id: `${source}-${uid()}`,
+    name,
+    brand: str(it.brand) || undefined,
+    kcal: Math.round(kcal),
+    protein: Math.round(req(it.protein_g) * 10) / 10,
+    carbs: Math.round(req(it.carbs_g) * 10) / 10,
+    fat: Math.round(req(it.fat_g) * 10) / 10,
+    unit: str(it.unit) === 'ml' ? 'ml' : 'g',
+    fiber: opt(it.fiber_g),
+    sugars: opt(it.sugars_g),
+    satFat: opt(it.sat_fat_g),
+    sodium: sodium === undefined ? undefined : Math.round(sodium),
+    portion: grams > 0 && grams <= 2000 ? { label: str(it.portion_label) || '1 porción', grams: Math.round(grams) } : undefined,
+    source,
+  };
+}
+
+/** Busca un alimento por nombre con IA: útil para platos caseros o productos que no están en las bases de datos. */
+export async function lookupFoods(ai: AiSettings, query: string, onGeminiModel?: (m: string) => void): Promise<Food[]> {
+  const raw = (await runJson(ai, { system: LOOKUP_PROMPT, text: `Alimento buscado: ${query.trim()}`, shape: LOOKUP_SHAPE }, onGeminiModel)) as { foods?: unknown };
+  const list = Array.isArray(raw?.foods) ? (raw.foods as Record<string, unknown>[]) : [];
+  return list.map((it) => foodFromAi(it, 'ai')).filter((f): f is Food => f !== null).slice(0, 4);
+}
+
+/* ---------- Lectura de etiquetas nutricionales ---------- */
+
+const LABEL_PROMPT = `Lees etiquetas de información nutricional de productos envasados a partir de una foto.
+Transcribe EXACTAMENTE los valores impresos en la columna "por 100 g" (o "por 100 ml"). No estimes ni redondees.
+Si la etiqueta solo trae valores por porción, conviértelos a 100 g/ml usando el tamaño de porción impreso.
+"name" y "brand" son el nombre y la marca del producto si se ven en la foto; si no, déjalos vacíos.
+"unit" es "g" o "ml". "portion_label" describe la porción impresa (por ejemplo "1 porción (30 g)") y "portion_grams" es su tamaño.
+"sodium_mg" va en miligramos por 100 g/ml. Si un valor no aparece en la etiqueta, usa -1.
+"readable" es "si" cuando la foto muestra una tabla nutricional legible y "no" en caso contrario.`;
+
+const LABEL_SHAPE: Shape = {
+  object: { readable: 'string', name: 'string', brand: 'string', unit: 'string', portion_label: 'string', portion_grams: 'number', ...NUTRITION_FIELDS },
+};
+
+/** Lee la tabla nutricional de una foto y devuelve los valores impresos por 100 g/ml. */
+export async function readLabel(ai: AiSettings, imageBase64: string, onGeminiModel?: (m: string) => void): Promise<Food> {
+  const raw = (await runJson(
+    ai,
+    { system: LABEL_PROMPT, text: 'Lee la información nutricional de esta etiqueta.', imageBase64, shape: LABEL_SHAPE },
+    onGeminiModel,
+  )) as Record<string, unknown>;
+  const readable = String(raw?.readable ?? '').toLowerCase().startsWith('s');
+  const food = readable ? foodFromAi({ ...raw, name: String(raw.name || '').trim() || 'Producto' }, 'custom') : null;
+  if (!food) throw new AiError('No se pudo leer una tabla nutricional en la foto. Acércate a la etiqueta y evita reflejos.');
+  if (!String(raw.name || '').trim()) food.name = '';
+  return food;
+}
+
 /* ---------- Equipamiento de ejercicio ---------- */
 
 const EQUIPMENT_PROMPT = `Eres un entrenador personal certificado. El usuario te muestra o describe un equipo de ejercicio que tiene disponible

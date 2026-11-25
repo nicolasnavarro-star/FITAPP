@@ -1,5 +1,5 @@
 import { ChevronLeft } from 'lucide-react';
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { back } from '../router';
 import { useUi } from '../store';
 
@@ -131,5 +131,17 @@ export function Spinner({ label }: { label?: string }) {
       <div className="spinner" />
       {label && <span className="muted small">{label}</span>}
     </div>
+  );
+}
+
+/** Miniatura de un alimento: foto del producto si existe; si no, su inicial. */
+export function FoodThumb({ name, image, large }: { name: string; image?: string; large?: boolean }) {
+  const [failed, setFailed] = useState(false);
+  const cls = `thumb ${large ? 'lg' : ''}`;
+  if (image && !failed) return <img className={cls} src={image} alt="" loading="lazy" onError={() => setFailed(true)} />;
+  return (
+    <span className={cls} aria-hidden>
+      {name.trim().charAt(0).toUpperCase() || '?'}
+    </span>
   );
 }

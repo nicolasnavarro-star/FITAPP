@@ -1,6 +1,7 @@
-import { Camera, Globe, PencilLine, ScanBarcode, Search, Trash2, X, Zap } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { Field, Header, Segmented, Sheet, Spinner } from '../components/ui';
+import { Camera, PencilLine, ScanBarcode, Search, Sparkles, Trash2, X, Zap } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Field, FoodThumb, Header, Segmented, Sheet, Spinner } from '../components/ui';
+import { AiError, aiReady, lookupFoods } from '../lib/ai';
 import { searchFoods } from '../lib/foods';
 import { defaultMeal, isMealId, mealLabel } from '../lib/meals';
 import { searchOnline } from '../lib/off';
@@ -9,19 +10,24 @@ import { fmt, parseNum, uid } from '../lib/util';
 import { backToRoot, push, useRoute } from '../router';
 import { useStore, useUi } from '../store';
 
-function FoodRow({ food, grams, onClick, onDelete }: { food: Food; grams?: number; onClick: () => void; onDelete?: () => void }) {
+function FoodRow({ food, grams, tag, onClick, onDelete }: { food: Food; grams?: number; tag?: string; onClick: () => void; onDelete?: () => void }) {
   const amount = grams ?? food.portion?.grams ?? 100;
   return (
     <div className="list-item" style={{ padding: 0 }}>
-      <button className="row grow" style={{ textAlign: 'left', padding: '12px 0', minHeight: 56 }} onClick={onClick}>
+      <button className="row grow" style={{ textAlign: 'left', padding: '10px 0', minHeight: 60 }} onClick={onClick}>
+        <FoodThumb name={food.name} image={food.image} />
         <div className="grow">
           <div className="name">{food.name}</div>
-          <div className="sub">
+          <div className="sub num">
             {food.brand ? `${food.brand} · ` : ''}
-            {fmt(amount)} {food.unit}
+            {fmt(amount)} {food.unit} · P {fmt((food.protein * amount) / 100)} g
           </div>
         </div>
-        <span className="kcal num">{fmt((food.kcal * amount) / 100)} kcal</span>
+        {tag && <span className="tag">{tag}</span>}
+        <span className="kcal num">
+          {fmt((food.kcal * amount) / 100)}
+          <small>kcal</small>
+        </span>
       </button>
       {onDelete && (
         <button className="icon-btn" aria-label={`Eliminar ${food.name}`} onClick={onDelete}>
@@ -31,6 +37,8 @@ function FoodRow({ food, grams, onClick, onDelete }: { food: Food; grams?: numbe
     </div>
   );
 }
+
+type Remote = { q: string; status: 'loading' | 'done' | 'error'; foods: Food[]; msg?: string };
 
 export default function AddFood() {
   const { query } = useRoute();
@@ -43,47 +51,64 @@ export default function AddFood() {
   const customFoods = useStore((s) => s.customFoods);
   const removeCustomFood = useStore((s) => s.removeCustomFood);
   const addEntry = useStore((s) => s.addEntry);
+  const ai = useStore((s) => s.ai);
+  const setAi = useStore((s) => s.setAi);
 
   const [q, setQ] = useState('');
   const [tab, setTab] = useState<'recent' | 'mine'>('recent');
-  const [online, setOnline] = useState<{ q: string; status: 'loading' | 'done' | 'error'; foods: Food[] } | null>(null);
-  const [quick, setQuick] = useState(false);
+  const [online, setOnline] = useState<Remote | null>(null);
+  const [aiRes, setAiRes] = useState<Remote | null>(null);
+  const [quick, setQuick] = useState(query.get('quick') === '1');
 
+  const term = q.trim();
   const local = useMemo(() => searchFoods(q, customFoods), [q, customFoods]);
-  const searching = q.trim().length >= 2;
+  const searching = term.length >= 2;
+
+  // Los productos envasados se buscan solos, un momento después de dejar de escribir.
+  useEffect(() => {
+    if (term.length < 3) {
+      setOnline(null);
+      return;
+    }
+    setOnline({ q: term, status: 'loading', foods: [] });
+    const ctrl = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const foods = await searchOnline(term, ctrl.signal);
+        if (!ctrl.signal.aborted) setOnline({ q: term, status: 'done', foods });
+      } catch {
+        if (!ctrl.signal.aborted) setOnline({ q: term, status: 'error', foods: [] });
+      }
+    }, 700);
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [term]);
 
   const open = (food: Food, grams?: number) => {
     setDraft({ food, grams: grams ?? food.portion?.grams ?? 100, meal });
     push('/food');
   };
 
-  const runOnline = async () => {
-    const term = q.trim();
-    setOnline({ q: term, status: 'loading', foods: [] });
+  const askAi = async () => {
+    setAiRes({ q: term, status: 'loading', foods: [] });
     try {
-      const foods = await searchOnline(term);
-      setOnline({ q: term, status: 'done', foods });
-    } catch {
-      setOnline({ q: term, status: 'error', foods: [] });
+      const foods = await lookupFoods(ai, term, (geminiModel) => setAi({ geminiModel }));
+      setAiRes({ q: term, status: 'done', foods });
+    } catch (e) {
+      setAiRes({ q: term, status: 'error', foods: [], msg: e instanceof AiError ? e.message : 'No se pudo consultar a la IA.' });
     }
   };
 
-  const onlineForQuery = online && online.q === q.trim() ? online : null;
+  const aiForQuery = aiRes && aiRes.q === term ? aiRes : null;
 
   return (
     <div className="screen">
       <Header title={`Agregar a ${mealLabel(meal)}`} />
       <div className="input-wrap">
         <Search size={20} color="var(--text-3)" />
-        <input
-          type="search"
-          enterKeyHint="search"
-          placeholder="Buscar alimento o marca"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && searching && void runOnline()}
-          aria-label="Buscar alimento"
-        />
+        <input type="search" enterKeyHint="search" placeholder="Alimento, plato, producto o marca" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar alimento" />
         {q && (
           <button aria-label="Borrar búsqueda" onClick={() => setQ('')}>
             <X size={20} color="var(--text-3)" />
@@ -108,47 +133,72 @@ export default function AddFood() {
 
       {searching ? (
         <>
-          <div className="card">
-            {local.length > 0 ? (
-              <div className="list">
-                {local.map((f) => (
-                  <FoodRow key={f.id} food={f} onClick={() => open(f)} />
-                ))}
-              </div>
-            ) : (
-              <p className="empty">No hay coincidencias en la base local.</p>
-            )}
-          </div>
-
-          {!onlineForQuery && (
-            <button className="btn secondary" onClick={() => void runOnline()}>
-              <Globe size={18} /> Buscar «{q.trim()}» en productos envasados
-            </button>
-          )}
-          {onlineForQuery?.status === 'loading' && <Spinner label="Buscando en Open Food Facts…" />}
-          {onlineForQuery?.status === 'error' && (
-            <div className="notice error">
-              No se pudo buscar en línea. Revisa tu conexión e{' '}
-              <button className="link" onClick={() => void runOnline()}>
-                intenta de nuevo
-              </button>
-              .
-            </div>
-          )}
-          {onlineForQuery?.status === 'done' && (
-            <div className="card">
-              <h2 className="card-title">Productos envasados</h2>
-              {onlineForQuery.foods.length > 0 ? (
+          {local.length > 0 && (
+            <>
+              <h2 className="section-title">Alimentos</h2>
+              <div className="card" style={{ paddingTop: 6, paddingBottom: 6 }}>
                 <div className="list">
-                  {onlineForQuery.foods.map((f) => (
+                  {local.slice(0, 12).map((f) => (
                     <FoodRow key={f.id} food={f} onClick={() => open(f)} />
                   ))}
                 </div>
-              ) : (
-                <p className="empty">Sin resultados en línea. Puedes crear el alimento a mano o usar la foto con IA.</p>
-              )}
-            </div>
+              </div>
+            </>
           )}
+
+          {online && (
+            <>
+              <h2 className="section-title">Productos envasados</h2>
+              {online.status === 'loading' && <Spinner label="Buscando productos…" />}
+              {online.status === 'error' && <div className="notice small">No se pudo buscar productos en línea. Revisa tu conexión.</div>}
+              {online.status === 'done' &&
+                (online.foods.length > 0 ? (
+                  <div className="card" style={{ paddingTop: 6, paddingBottom: 6 }}>
+                    <div className="list">
+                      {online.foods.map((f) => (
+                        <FoodRow key={f.id} food={f} onClick={() => open(f)} />
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="small muted">No hay productos envasados con ese nombre.</p>
+                ))}
+            </>
+          )}
+
+          <h2 className="section-title">Inteligencia artificial</h2>
+          {!aiReady(ai) ? (
+            <button className="notice small" style={{ textAlign: 'left' }} onClick={() => push('/ai')}>
+              Configura tu clave de IA para buscar cualquier plato o producto por su nombre.
+            </button>
+          ) : aiForQuery?.status === 'loading' ? (
+            <Spinner label="Consultando valores nutricionales…" />
+          ) : aiForQuery?.status === 'done' && aiForQuery.foods.length > 0 ? (
+            <>
+              <div className="card" style={{ paddingTop: 6, paddingBottom: 6 }}>
+                <div className="list">
+                  {aiForQuery.foods.map((f) => (
+                    <FoodRow key={f.id} food={f} tag="IA" onClick={() => open(f)} />
+                  ))}
+                </div>
+              </div>
+              <p className="xs muted">Valores entregados por la IA: son una referencia y pueden diferir de la etiqueta real.</p>
+            </>
+          ) : (
+            <>
+              {aiForQuery?.status === 'error' && (
+                <div className="notice error small" role="alert">
+                  {aiForQuery.msg}
+                </div>
+              )}
+              {aiForQuery?.status === 'done' && <p className="small muted">La IA no reconoció «{term}» como un alimento.</p>}
+              <button className="btn secondary" onClick={() => void askAi()}>
+                <Sparkles size={18} /> Buscar «{term}» con IA
+              </button>
+            </>
+          )}
+
+          {local.length === 0 && !online && <p className="small muted">Sigue escribiendo para buscar también en productos envasados.</p>}
         </>
       ) : (
         <>
@@ -160,7 +210,7 @@ export default function AddFood() {
               { value: 'mine', label: 'Mis alimentos' },
             ]}
           />
-          <div className="card">
+          <div className="card" style={{ paddingTop: 6, paddingBottom: 6 }}>
             {tab === 'recent' &&
               (recents.length > 0 ? (
                 <div className="list">
@@ -169,7 +219,7 @@ export default function AddFood() {
                   ))}
                 </div>
               ) : (
-                <p className="empty">Aquí aparecerán los alimentos que registres. Busca uno arriba, escanea un producto o toma una foto de tu plato.</p>
+                <p className="empty">Aquí aparecerán los alimentos que registres. Escribe arriba para buscar por nombre, escanea un producto o toma una foto de tu plato.</p>
               ))}
             {tab === 'mine' &&
               (customFoods.length > 0 ? (

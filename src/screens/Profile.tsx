@@ -84,11 +84,16 @@ export default function Profile() {
       <h1 className="title-xl">Perfil</h1>
 
       <div className="card col">
-        <div>
-          <h2 style={{ fontSize: 20, fontWeight: 800 }}>{profile.name || 'Tu perfil'}</h2>
-          <p className="small muted num">
-            {profile.age} años · {fmt(profile.heightCm)} cm · {fmt(weight, 1)} kg · Actividad: {ACTIVITY[profile.activity].label.toLowerCase()}
-          </p>
+        <div className="row">
+          <span className="avatar" style={{ width: 54, height: 54, fontSize: 22 }} aria-hidden>
+            {(profile.name || 'H').charAt(0).toUpperCase()}
+          </span>
+          <div className="grow">
+            <h2 style={{ fontSize: 20, fontWeight: 800 }}>{profile.name || 'Tu perfil'}</h2>
+            <p className="small muted num">
+              {profile.age} años · {fmt(profile.heightCm)} cm · {fmt(weight, 1)} kg · Actividad: {ACTIVITY[profile.activity].label.toLowerCase()}
+            </p>
+          </div>
         </div>
         <div className="row spread">
           <div className="stat">
