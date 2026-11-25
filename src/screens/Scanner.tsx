@@ -1,6 +1,7 @@
-import { ImageUp, RefreshCw } from 'lucide-react';
+import { Globe, ImageUp, RefreshCw, ScanText } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Field, Header, Spinner } from '../components/ui';
+import { AiError, canSearchWeb, findProductOnline } from '../lib/ai';
 import { getDetector, isValidBarcode } from '../lib/barcode';
 import { defaultMeal, isMealId } from '../lib/meals';
 import { lookupBarcode } from '../lib/off';
@@ -23,6 +24,9 @@ export default function Scanner() {
   const setDraft = useUi((s) => s.setDraft);
   const showToast = useUi((s) => s.showToast);
   const customFoods = useStore((s) => s.customFoods);
+  const ai = useStore((s) => s.ai);
+  const setPrefill = useUi((s) => s.setPrefill);
+  const [web, setWeb] = useState<{ status: 'idle' | 'loading' | 'none' | 'error'; msg?: string }>({ status: 'idle' });
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<State>({ kind: 'starting' });
@@ -55,6 +59,7 @@ export default function Scanner() {
           replace('/food');
           return;
         }
+        setWeb({ status: 'idle' });
         setState({ kind: 'not-found', code, name: res.status === 'incomplete' ? res.name : undefined });
       } catch {
         setState({ kind: 'error', code });
@@ -141,6 +146,21 @@ export default function Scanner() {
     }
   };
 
+  const toForm = (code: string, name?: string) => replace(`/custom-food?meal=${meal}&barcode=${code}${name ? `&name=${encodeURIComponent(name)}` : ''}`);
+
+  const searchWeb = async (code: string, name?: string) => {
+    setWeb({ status: 'loading' });
+    try {
+      const found = await findProductOnline(ai, code, name);
+      if (!found) return setWeb({ status: 'none' });
+      // Los datos van al formulario para compararlos con el envase antes de guardar.
+      setPrefill(found);
+      toForm(code, found.food.name);
+    } catch (e) {
+      setWeb({ status: 'error', msg: e instanceof AiError ? e.message : 'No se pudo buscar en internet.' });
+    }
+  };
+
   const manualCode = manual.replace(/\D/g, '');
   const showVideo = state.kind === 'starting' || state.kind === 'scanning' || state.kind === 'looking';
   const restart = () => setSession((s) => s + 1);
@@ -169,15 +189,37 @@ export default function Scanner() {
         <div className="card col">
           <h2 className="card-title">{state.name ? 'Producto sin datos nutricionales' : 'Producto no encontrado'}</h2>
           <p className="small muted">
-            {state.name ? `«${state.name}» está en Open Food Facts, pero sin calorías registradas.` : `El código ${state.code} no está en Open Food Facts.`} Agrégalo sacando
-            una foto a su tabla nutricional: se completan los valores exactos y la próxima vez se reconocerá al escanearlo.
+            {state.name ? `«${state.name}» está en Open Food Facts, pero sin calorías registradas.` : `El código ${state.code} no está en Open Food Facts, la base abierta de productos.`} Hay dos
+            formas de agregarlo; en ambas queda guardado con su código y la próxima vez se reconoce al escanearlo.
           </p>
-          <button className="btn" onClick={() => replace(`/custom-food?meal=${meal}&barcode=${state.code}${state.name ? `&name=${encodeURIComponent(state.name)}` : ''}`)}>
-            Agregar con foto de la etiqueta
-          </button>
-          <button className="btn secondary" onClick={restart}>
-            <RefreshCw size={18} /> Escanear otro
-          </button>
+          {web.status === 'loading' ? (
+            <Spinner label="Buscando el producto en internet… puede tardar hasta un minuto." />
+          ) : (
+            <>
+              {web.status === 'none' && (
+                <div className="notice small" role="status">
+                  No se encontró en internet una tabla nutricional confiable para este producto. Usa la foto de la etiqueta.
+                </div>
+              )}
+              {web.status === 'error' && (
+                <div className="notice error small" role="alert">
+                  {web.msg}
+                </div>
+              )}
+              {canSearchWeb(ai) && web.status !== 'none' && (
+                <button className="btn" onClick={() => void searchWeb(state.code, state.name)}>
+                  <Globe size={18} /> Buscar en internet con IA
+                </button>
+              )}
+              <button className={`btn ${canSearchWeb(ai) && web.status !== 'none' ? 'secondary' : ''}`} onClick={() => toForm(state.code, state.name)}>
+                <ScanText size={18} /> Agregar con foto de la etiqueta
+              </button>
+              {!canSearchWeb(ai) && <p className="xs muted">Con Claude configurado en Perfil → Inteligencia artificial, la app también puede buscar el producto en internet.</p>}
+              <button className="btn ghost" onClick={restart}>
+                <RefreshCw size={18} /> Escanear otro
+              </button>
+            </>
+          )}
         </div>
       )}
 

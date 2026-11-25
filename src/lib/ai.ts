@@ -394,6 +394,104 @@ export async function readLabel(ai: AiSettings, imageBase64: string, onGeminiMod
   return food;
 }
 
+/* ---------- Búsqueda de un producto en internet (Claude con búsqueda web) ---------- */
+
+export interface WebProduct {
+  food: Food;
+  /** Página donde se leyeron los valores. */
+  sourceUrl?: string;
+  sourceName?: string;
+}
+
+/** La búsqueda en internet usa la herramienta de búsqueda web de Claude, así que requiere ese proveedor. */
+export function canSearchWeb(ai: AiSettings): boolean {
+  return ai.provider === 'claude' && ai.claudeKey.trim() !== '';
+}
+
+const WEB_PROMPT = `Buscas en internet la información nutricional de un producto envasado que se vende en Chile, a partir de su código de barras.
+Procedimiento:
+1. Busca el código de barras exacto entre comillas para identificar el producto (nombre, marca, formato).
+2. Con el nombre, busca su tabla nutricional en supermercados chilenos (Jumbo, Lider, Unimarc, Santa Isabel, Tottus), en el sitio del fabricante o en bases de productos.
+Reglas estrictas:
+- Entrega solo valores que hayas leído en una página. No estimes, no completes con conocimiento general y no mezcles datos de productos parecidos.
+- Los valores deben ser POR 100 g (o por 100 ml si es líquido). Si la fuente solo los da por porción, conviértelos usando el tamaño de porción publicado.
+- Si no logras identificar el producto con certeza, o no encuentras su tabla nutricional, responde "found": "no".
+Termina tu respuesta con un único bloque JSON, sin texto después, con exactamente estas claves:
+{"found":"si o no","name":"","brand":"","unit":"g o ml","portion_label":"","portion_grams":0,"kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0,"fiber_g":-1,"sugars_g":-1,"sat_fat_g":-1,"sodium_mg":-1,"source_url":"","source_name":""}
+Usa -1 en fibra, azúcares, grasa saturada o sodio cuando la fuente no los indique. "sodium_mg" va en miligramos. "source_url" es la página de donde tomaste los valores.`;
+
+/** Extrae el último objeto JSON de un texto (la respuesta puede traer explicación antes). */
+export function lastJsonObject(text: string): unknown {
+  for (let end = text.lastIndexOf('}'); end >= 0; end = text.lastIndexOf('}', end - 1)) {
+    let depth = 0;
+    for (let i = end; i >= 0; i--) {
+      if (text[i] === '}') depth++;
+      else if (text[i] === '{' && --depth === 0) {
+        try {
+          return JSON.parse(text.slice(i, end + 1));
+        } catch {
+          break;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Busca en internet la tabla nutricional de un producto por su código de barras.
+ * Devuelve null si no se encuentra información confiable.
+ */
+export async function findProductOnline(ai: AiSettings, barcode: string, hintName?: string): Promise<WebProduct | null> {
+  if (!canSearchWeb(ai)) throw new AiError('La búsqueda en internet requiere tener Claude configurado en Perfil → Inteligencia artificial.');
+  const client = claudeClient(ai.claudeKey);
+  const model = ai.claudeModel || DEFAULT_CLAUDE_MODEL;
+  const fallback = SERVER_FALLBACK_MODELS.has(model);
+  // La versión con filtrado dinámico de la herramienta no está disponible en el modelo más económico.
+  const tool = { type: model.includes('haiku') ? 'web_search_20250305' : 'web_search_20260209', name: 'web_search', max_uses: 5 } as Anthropic.Beta.BetaToolUnion;
+  const question = `Código de barras: ${barcode}${hintName ? `\nNombre probable del producto: ${hintName}` : ''}`;
+  const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: 'user', content: question }];
+  try {
+    let text = '';
+    // La búsqueda corre en los servidores de Anthropic; si el turno queda en pausa se reanuda reenviando lo recibido.
+    for (let turn = 0; turn < 5; turn++) {
+      const res = await client.beta.messages.create({
+        model,
+        max_tokens: 16000,
+        system: WEB_PROMPT,
+        tools: [tool],
+        output_config: { effort: 'medium' },
+        messages,
+        ...(fallback ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
+      });
+      if (res.stop_reason === 'refusal') return null;
+      for (const block of res.content) {
+        const b = block as { type: string; content?: unknown };
+        if (b.type === 'web_search_tool_result' && b.content && !Array.isArray(b.content)) {
+          const code = (b.content as { error_code?: string }).error_code;
+          if (code && code !== 'max_uses_exceeded') throw new AiError('La búsqueda web no está disponible en tu cuenta de Claude. Actívala en la consola de Anthropic (Settings → Privacy) o usa la foto de la etiqueta.');
+        }
+      }
+      if (res.stop_reason === 'pause_turn') {
+        messages.length = 1;
+        messages.push({ role: 'assistant', content: res.content as unknown as Anthropic.Beta.BetaContentBlockParam[] });
+        continue;
+      }
+      text = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+      break;
+    }
+    const raw = lastJsonObject(text) as Record<string, unknown> | null;
+    if (!raw || !String(raw.found ?? '').toLowerCase().startsWith('s')) return null;
+    const food = foodFromAi(raw, 'custom');
+    if (!food) return null;
+    food.barcode = barcode;
+    const url = typeof raw.source_url === 'string' && /^https:\/\/[^\s"'<>]+$/.test(raw.source_url) ? raw.source_url : undefined;
+    return { food, sourceUrl: url, sourceName: typeof raw.source_name === 'string' ? raw.source_name.trim().slice(0, 60) || undefined : undefined };
+  } catch (e) {
+    throw e instanceof AiError ? e : claudeError(e);
+  }
+}
+
 /* ---------- Equipamiento de ejercicio ---------- */
 
 const EQUIPMENT_PROMPT = `Eres un entrenador personal certificado. El usuario te muestra o describe un equipo de ejercicio que tiene disponible

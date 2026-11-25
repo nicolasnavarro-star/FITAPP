@@ -287,12 +287,21 @@ export interface FoodDraft {
   entryId?: string;
 }
 
+/** Datos encontrados fuera de la app para rellenar el formulario de un alimento nuevo. */
+export interface FoodPrefill {
+  food: Food;
+  sourceUrl?: string;
+  sourceName?: string;
+}
+
 interface UiState {
   date: string;
   draft: FoodDraft | null;
+  prefill: FoodPrefill | null;
   toast: string | null;
   setDate: (d: string) => void;
   setDraft: (d: FoodDraft | null) => void;
+  setPrefill: (p: FoodPrefill | null) => void;
   showToast: (msg: string) => void;
 }
 
@@ -301,9 +310,11 @@ let toastTimer: ReturnType<typeof setTimeout> | undefined;
 export const useUi = create<UiState>((set) => ({
   date: todayKey(),
   draft: null,
+  prefill: null,
   toast: null,
   setDate: (date) => set({ date }),
   setDraft: (draft) => set({ draft }),
+  setPrefill: (prefill) => set({ prefill }),
   showToast: (toast) => {
     set({ toast });
     clearTimeout(toastTimer);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aiItemToFood } from '../src/lib/ai';
+import { aiItemToFood, lastJsonObject } from '../src/lib/ai';
 import { EXERCISES, candidates, getExercise, imagesUrl, videoUrl } from '../src/lib/exercises';
 import { BASE_FOODS, searchFoods } from '../src/lib/foods';
 import { type Pt, TERRAIN, computeStats, estimateKcal, estimateSeconds, fmtDuration, fmtPace, haversine, profile, splits, toGpx } from '../src/lib/geo';
@@ -7,7 +7,7 @@ import { parseOverpass } from '../src/lib/osm';
 import { decodeTerrarium, tilePos, tilesForBounds } from '../src/lib/terrain';
 import { describeWeather } from '../src/lib/weather';
 import { bmr, computeTargets, macrosFor, weeksToGoal } from '../src/lib/nutrition';
-import { mapOffProduct } from '../src/lib/off';
+import { barcodeVariants, mapOffProduct } from '../src/lib/off';
 import { generatePlan } from '../src/lib/routines';
 import type { Equipment, Goal, Level, Profile } from '../src/lib/types';
 import { addDays, daysBetween, parseNum } from '../src/lib/util';
@@ -104,6 +104,20 @@ describe('alimentos', () => {
     expect(mapOffProduct({ product_name: 'Raro', image_front_small_url: 'javascript:alert(1)', nutriments: { 'energy-kcal_100g': 1 } })?.image).toBeUndefined();
     expect(mapOffProduct({ product_name: 'En kJ', nutriments: { energy_100g: 418.4 } })?.kcal).toBe(100);
     expect(mapOffProduct({ product_name: 'Jugo', quantity: '1 L', nutriments: { 'energy-kcal_100g': 45 } })?.unit).toBe('ml');
+  });
+
+  it('prueba las formas equivalentes de un código de barras', () => {
+    expect(barcodeVariants('7802800716777')).toEqual(['7802800716777']);
+    expect(barcodeVariants('012345678905')).toEqual(['012345678905', '0012345678905']);
+    expect(barcodeVariants('0012345678905')).toEqual(['0012345678905', '012345678905']);
+    expect(barcodeVariants(' 7802-800 716777 ')).toEqual(['7802800716777']);
+  });
+
+  it('extrae el JSON final de una respuesta con texto alrededor', () => {
+    expect(lastJsonObject('Encontré el producto en Jumbo.\n```json\n{"found":"si","kcal":431,"note":"valor {aprox}"}\n```')).toEqual({ found: 'si', kcal: 431, note: 'valor {aprox}' });
+    expect(lastJsonObject('primero {"a":1} y al final {"found":"no"}')).toEqual({ found: 'no' });
+    expect(lastJsonObject('sin datos')).toBeNull();
+    expect(lastJsonObject('roto {"a": }')).toBeNull();
   });
 
   it('convierte una estimación de IA a valores por 100 g', () => {

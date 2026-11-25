@@ -6,6 +6,7 @@ App personal para Android: contador de calorías con IA, seguimiento de progreso
 
 - **Diario de comidas** con calorías y macros (proteínas, carbohidratos, grasas) por desayuno, almuerzo, cena y colaciones, además de registro de agua.
 - **Varias formas de registrar**: buscador por nombre que consulta a la vez la base local (funciona sin conexión), los productos envasados de [Open Food Facts](https://world.openfoodfacts.org) y, si quieres, la IA para platos o productos que no aparecen; **escáner de código de barras** con los datos de la etiqueta (incluye azúcares, grasas saturadas, fibra y sodio cuando existen); **foto con IA** del plato; y añadido rápido de calorías.
+- **Productos que no están en la base**: si el código escaneado no aparece en Open Food Facts, la app puede buscar su tabla nutricional en internet con la búsqueda web de Claude (muestra la fuente y pide compararla con el envase) o leerla de una foto de la etiqueta. En ambos casos el producto queda guardado con su código.
 - **Lectura de etiquetas**: si un producto no está en la base, una foto de su tabla nutricional completa los valores exactos y queda asociado a su código de barras para la próxima vez.
 - **Metas a tu medida**: definición, mantener o ganar músculo, con calorías y macros calculados según tu peso, altura, edad y actividad (fórmula Mifflin-St Jeor). También puedes fijar metas propias.
 - **Progreso**: registro de peso, gráfico con línea de meta, fecha estimada para llegar al objetivo, IMC, calorías de la semana y racha de días.

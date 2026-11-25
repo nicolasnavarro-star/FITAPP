@@ -75,16 +75,32 @@ async function getJson(url: string, timeoutMs = 15000, outer?: AbortSignal): Pro
 
 export type BarcodeResult = { status: 'found'; food: Food } | { status: 'not_found' } | { status: 'incomplete'; name: string };
 
+/**
+ * Formas equivalentes de un mismo código: los envases con UPC de 12 dígitos se guardan a veces
+ * como EAN-13 con un cero delante, y al revés.
+ */
+export function barcodeVariants(code: string): string[] {
+  const digits = code.replace(/\D/g, '');
+  const out = [digits];
+  if (digits.length === 12) out.push(`0${digits}`);
+  if (digits.length === 13 && digits.startsWith('0')) out.push(digits.slice(1));
+  if (digits.length === 14 && digits.startsWith('0')) out.push(digits.slice(1));
+  return out;
+}
+
 export async function lookupBarcode(code: string): Promise<BarcodeResult> {
-  const data = (await getJson(`${BASE}/api/v2/product/${encodeURIComponent(code)}.json?fields=${FIELDS}`)) as {
-    status?: number;
-    product?: OffProduct;
-  } | null;
-  if (!data || data.status !== 1 || !data.product) return { status: 'not_found' };
-  const food = mapOffProduct({ ...data.product, code });
-  if (food) return { status: 'found', food };
-  const name = (data.product.product_name_es || data.product.product_name || '').trim();
-  return name ? { status: 'incomplete', name } : { status: 'not_found' };
+  let incomplete: string | null = null;
+  for (const variant of barcodeVariants(code)) {
+    const data = (await getJson(`${BASE}/api/v2/product/${encodeURIComponent(variant)}.json?fields=${FIELDS}`)) as {
+      status?: number;
+      product?: OffProduct;
+    } | null;
+    if (!data || data.status !== 1 || !data.product) continue;
+    const food = mapOffProduct({ ...data.product, code });
+    if (food) return { status: 'found', food };
+    incomplete ??= (data.product.product_name_es || data.product.product_name || '').trim() || null;
+  }
+  return incomplete ? { status: 'incomplete', name: incomplete } : { status: 'not_found' };
 }
 
 export async function searchOnline(query: string, signal?: AbortSignal): Promise<Food[]> {

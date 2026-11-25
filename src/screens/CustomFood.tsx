@@ -1,5 +1,5 @@
 import { Camera, ImagePlus, ScanText } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Field, Header, Segmented, Spinner } from '../components/ui';
 import { AiError, aiReady, prepareImage, readLabel } from '../lib/ai';
 import { defaultMeal, isMealId } from '../lib/meals';
@@ -19,6 +19,8 @@ export default function CustomFood() {
   const ai = useStore((s) => s.ai);
   const setAi = useStore((s) => s.setAi);
   const setDraft = useUi((s) => s.setDraft);
+  const prefill = useUi((s) => s.prefill);
+  const setPrefill = useUi((s) => s.setPrefill);
   const showToast = useUi((s) => s.showToast);
 
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -38,6 +40,31 @@ export default function CustomFood() {
   const [error, setError] = useState('');
   const [reading, setReading] = useState(false);
   const [fromLabel, setFromLabel] = useState(false);
+  const [fromWeb, setFromWeb] = useState<{ url?: string; name?: string } | null>(null);
+
+  const fill = (f: Food) => {
+    if (f.name) setName(f.name);
+    if (f.brand) setBrand(f.brand);
+    setUnit(f.unit);
+    setKcal(show(f.kcal));
+    setProtein(show(f.protein));
+    setCarbs(show(f.carbs));
+    setFat(show(f.fat));
+    setSugars(show(f.sugars));
+    setSatFat(show(f.satFat));
+    setFiber(show(f.fiber));
+    setSodium(show(f.sodium));
+    setPortion(show(f.portion?.grams));
+  };
+
+  useEffect(() => {
+    // Datos encontrados en internet al escanear: se cargan una vez y se descartan.
+    if (!prefill) return;
+    fill(prefill.food);
+    setFromWeb({ url: prefill.sourceUrl, name: prefill.sourceName });
+    setPrefill(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill]);
 
   const onLabel = async (file: File | undefined) => {
     if (!file) return;
@@ -45,20 +72,9 @@ export default function CustomFood() {
     setError('');
     try {
       const img = await prepareImage(file, 1600);
-      const f = await readLabel(ai, img.base64, (geminiModel) => setAi({ geminiModel }));
-      if (f.name) setName(f.name);
-      if (f.brand) setBrand(f.brand);
-      setUnit(f.unit);
-      setKcal(show(f.kcal));
-      setProtein(show(f.protein));
-      setCarbs(show(f.carbs));
-      setFat(show(f.fat));
-      setSugars(show(f.sugars));
-      setSatFat(show(f.satFat));
-      setFiber(show(f.fiber));
-      setSodium(show(f.sodium));
-      setPortion(show(f.portion?.grams));
+      fill(await readLabel(ai, img.base64, (geminiModel) => setAi({ geminiModel })));
       setFromLabel(true);
+      setFromWeb(null);
     } catch (e) {
       setError(e instanceof AiError ? e.message : 'No se pudo leer la etiqueta. Intenta de nuevo.');
     } finally {
@@ -108,6 +124,19 @@ export default function CustomFood() {
       <div className="screen with-footer">
         <Header title="Crear alimento" />
         {barcode && <div className="notice small">Código de barras {barcode}: la próxima vez que lo escanees se reconocerá automáticamente.</div>}
+        {fromWeb && (
+          <div className="notice small" role="status">
+            Datos encontrados en internet{fromWeb.name ? ` (${fromWeb.name})` : ''}. Compáralos con el envase y corrige lo que no coincida antes de guardar.
+            {fromWeb.url && (
+              <>
+                {' '}
+                <a className="link" href={fromWeb.url} target="_blank" rel="noreferrer">
+                  Ver la fuente
+                </a>
+              </>
+            )}
+          </div>
+        )}
 
         <div className="card col">
           <div className="row">
