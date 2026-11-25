@@ -150,7 +150,9 @@ export default function AddFood() {
             <>
               <h2 className="section-title">Productos envasados</h2>
               {online.status === 'loading' && <Spinner label="Buscando productos…" />}
-              {online.status === 'error' && <div className="notice small">No se pudo buscar productos en línea. Revisa tu conexión.</div>}
+              {online.status === 'error' && (
+                <div className="notice small">El buscador de productos envasados no respondió (a veces está saturado). Puedes buscar con IA aquí abajo o escanear el código del envase.</div>
+              )}
               {online.status === 'done' &&
                 (online.foods.length > 0 ? (
                   <div className="card" style={{ paddingTop: 6, paddingBottom: 6 }}>

@@ -275,6 +275,15 @@ export default function Scanner() {
     void applyCamera(track, { focusMode: first }).then(() => setTimeout(() => void applyCamera(track, { focusMode: 'continuous' }), 900));
   };
 
+  // Con Claude configurado, la búsqueda en internet parte sola cuando la base abierta no trae los datos.
+  const autoSearched = useRef('');
+  useEffect(() => {
+    if (state.kind !== 'not-found' || web.status !== 'idle' || !canSearchWeb(ai) || autoSearched.current === state.code) return;
+    autoSearched.current = state.code;
+    void searchWeb(state.code, state.name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, web.status]);
+
   const manualCode = manual.replace(/\D/g, '');
   const showVideo = inApp && (state.kind === 'starting' || state.kind === 'scanning' || state.kind === 'looking');
   const restart = () => setSession((s) => s + 1);

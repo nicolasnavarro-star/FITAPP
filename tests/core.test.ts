@@ -106,6 +106,42 @@ describe('alimentos', () => {
     expect(mapOffProduct({ product_name: 'Jugo', quantity: '1 L', nutriments: { 'energy-kcal_100g': 45 } })?.unit).toBe('ml');
   });
 
+  it('lee el formato nuevo de datos nutricionales de Open Food Facts', () => {
+    const food = mapOffProduct({
+      code: '7802900001520',
+      product_name: 'Leche Proteína Chocolate',
+      brands: ['Soprole'],
+      quantity: '200 ml',
+      serving_quantity: 200,
+      nutriments: {},
+      nutrition: {
+        aggregated_set: {
+          per: '100ml',
+          nutrients: {
+            'energy-kcal': { value: 64 },
+            proteins: { value: 6 },
+            carbohydrates: { value: 5.2 },
+            fat: { value: 2 },
+            sugars: { value: 4.9 },
+            'saturated-fat': { value_computed: 1.3 },
+            sodium: { value: 0.06 },
+          },
+        },
+      },
+    })!;
+    expect(food).toMatchObject({ name: 'Leche Proteína Chocolate', brand: 'Soprole', kcal: 64, protein: 6, carbs: 5.2, fat: 2, sugars: 4.9, satFat: 1.3, sodium: 60, unit: 'ml' });
+    expect(food.portion?.grams).toBe(200);
+    // Solo energía en kJ y sodio derivado de la sal.
+    const kj = mapOffProduct({ product_name: { es: 'Galletas', main: 'Cookies' }, nutrition: { aggregated_set: { per: '100g', nutrients: { energy: { value: 2092 }, salt: { value: 1.25 } } } } })!;
+    expect(kj).toMatchObject({ name: 'Galletas', kcal: 500, sodium: 500, unit: 'g' });
+    // Valores por porción: se llevan a 100 g con el tamaño de la porción.
+    const serving = mapOffProduct({ product_name: 'Barra', serving_quantity: 40, nutrition: { aggregated_set: { per: 'serving', nutrients: { 'energy-kcal': { value: 160 }, proteins: { value: 8 } } } } })!;
+    expect(serving).toMatchObject({ kcal: 400, protein: 20 });
+    // Si el formato nuevo viene vacío se usa el histórico.
+    expect(mapOffProduct({ product_name: 'Yogur', nutrition: { aggregated_set: { nutrients: {} } }, nutriments: { 'energy-kcal_100g': 61 } })?.kcal).toBe(61);
+    expect(mapOffProduct({ product_name: 'Sin datos', nutrition: { aggregated_set: { per: '100g', nutrients: {} } }, nutriments: {} })).toBeNull();
+  });
+
   it('prueba las formas equivalentes de un código de barras', () => {
     expect(barcodeVariants('7802800716777')).toEqual(['7802800716777']);
     expect(barcodeVariants('012345678905')).toEqual(['012345678905', '0012345678905']);
