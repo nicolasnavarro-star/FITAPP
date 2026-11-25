@@ -677,7 +677,7 @@ p {
 .toast {
   position: fixed;
   left: 50%;
-  top: calc(var(--safe-top) + 14px);
+  bottom: calc(var(--safe-bottom) + 96px);
   transform: translateX(-50%);
   background: var(--text);
   color: var(--bg);
@@ -710,7 +710,7 @@ p {
 
 @keyframes toast-in {
   from {
-    transform: translate(-50%, -12px);
+    transform: translate(-50%, 12px);
     opacity: 0;
   }
 }
