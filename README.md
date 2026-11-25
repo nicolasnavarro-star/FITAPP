@@ -1,2 +1,60 @@
-# FITAPP
-Cuidado personal
+# Healty
+
+App personal para Android: contador de calorías con IA, seguimiento de progreso y rutinas de entrenamiento. Gratuita, sin cuentas ni servidores: todos los datos viven en tu teléfono.
+
+## Qué hace
+
+- **Diario de comidas** con calorías y macros (proteínas, carbohidratos, grasas) por desayuno, almuerzo, cena y colaciones, además de registro de agua.
+- **Tres formas de registrar**: buscar en una base local de alimentos comunes (funciona sin conexión) o en productos envasados de [Open Food Facts](https://world.openfoodfacts.org), **escanear el código de barras** y **foto con IA**, que identifica los alimentos del plato y estima sus valores.
+- **Metas a tu medida**: definición, mantener o ganar músculo, con calorías y macros calculados según tu peso, altura, edad y actividad (fórmula Mifflin-St Jeor). También puedes fijar metas propias.
+- **Progreso**: registro de peso, gráfico con línea de meta, fecha estimada para llegar al objetivo, IMC, calorías de la semana y racha de días.
+- **Rutinas**: genera una rutina semanal de cuerpo completo, torso/pierna o empuje/tirón/pierna según tus días disponibles, equipamiento (gimnasio, mancuernas o peso corporal) y nivel. Registra series, peso y repeticiones con temporizador de descanso.
+- **Respaldo**: exporta e importa todo tu historial en un archivo.
+
+## Instalar en tu teléfono
+
+1. En el teléfono, abre la página **Releases** de este repositorio y descarga el archivo `Healty-x.y.z.apk` más reciente.
+2. Abre el archivo. Android pedirá permiso para «instalar apps desconocidas» desde el navegador: acéptalo.
+3. Para actualizar, instala un APK más nuevo encima: tus datos se conservan.
+
+Cada cambio que se sube al repositorio compila un APK nuevo automáticamente (pestaña **Actions**) y lo publica en Releases.
+
+## Activar la foto con IA
+
+La app necesita una clave personal de un servicio de IA. Se configura una vez en **Perfil → Inteligencia artificial**:
+
+- **Google Gemini (gratis)**: crea una clave en <https://aistudio.google.com/apikey>. El nivel gratuito alcanza para uso personal.
+- **Claude (de pago por uso)**: crea una clave en <https://platform.claude.com/settings/keys>.
+
+La clave se guarda solo en el teléfono y las fotos van directo del teléfono al proveedor elegido.
+
+## Desarrollo
+
+Hecha con React, TypeScript y Vite, empaquetada para Android con Capacitor.
+
+```bash
+npm install
+npm run dev          # servidor de desarrollo en el navegador
+npm test             # pruebas unitarias
+npm run build        # compila la app web en dist/
+npm run android:sync # copia la app web al proyecto Android
+cd android && ./gradlew assembleRelease   # requiere el SDK de Android y JDK 21
+```
+
+Estructura principal:
+
+- `src/lib/`: lógica sin interfaz (cálculo de metas, base de alimentos, Open Food Facts, IA, ejercicios y generador de rutinas).
+- `src/screens/`: pantallas de la app.
+- `src/store.ts`: estado y guardado local.
+- `android/`: proyecto nativo generado por Capacitor.
+- `.github/workflows/android.yml`: compilación y publicación del APK.
+
+### Sobre la firma del APK
+
+Android solo permite actualizar una app si el APK nuevo está firmado con la misma clave que el instalado. Para que eso funcione sin configurar nada, la clave de firma (`android/keystore/healty-sideload.jks`) está incluida en el repositorio con una contraseña conocida, igual que una clave de depuración. Sirve para instalación personal, no para publicar en Google Play.
+
+Mientras el repositorio sea público, cualquiera podría firmar un APK con esa misma clave, así que instala solo los APK de tus propios Releases. Si prefieres una clave privada, define las variables `KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` y `KEY_PASSWORD` en la compilación (cambiar de clave obliga a desinstalar la app una vez; haz un respaldo antes).
+
+## Aviso
+
+Los valores nutricionales y las metas son estimaciones, y las rutinas son orientaciones generales. La app no reemplaza el consejo de profesionales de la salud o del deporte.
