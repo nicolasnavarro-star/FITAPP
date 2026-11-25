@@ -1,8 +1,9 @@
-import { Globe, ImageUp, RefreshCw, ScanText } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { Flashlight, Globe, ImageUp, RefreshCw, ScanBarcode, ScanText, SwitchCamera } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Field, Header, Spinner } from '../components/ui';
 import { AiError, canSearchWeb, findProductOnline } from '../lib/ai';
-import { getDetector, isValidBarcode } from '../lib/barcode';
+import { type CameraCaps, applyCamera, backCameras, cameraCaps, getDetector, googleScan, isValidBarcode } from '../lib/barcode';
 import { defaultMeal, isMealId } from '../lib/meals';
 import { lookupBarcode } from '../lib/off';
 import type { MealId } from '../lib/types';
@@ -10,6 +11,8 @@ import { replace, useRoute } from '../router';
 import { useStore, useUi } from '../store';
 
 type State =
+  | { kind: 'opening' }
+  | { kind: 'cancelled' }
   | { kind: 'starting' }
   | { kind: 'scanning' }
   | { kind: 'no-camera'; reason: string }
@@ -17,27 +20,48 @@ type State =
   | { kind: 'not-found'; code: string; name?: string }
   | { kind: 'error'; code: string };
 
+const CAMERA_KEY = 'kaizen-scan-camera';
+const ZOOMS = [1, 2, 3];
+
+function savedCamera(): string | undefined {
+  try {
+    return localStorage.getItem(CAMERA_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export default function Scanner() {
   const { query } = useRoute();
   const mealParam = query.get('meal');
   const meal: MealId = isMealId(mealParam) ? mealParam : defaultMeal();
   const setDraft = useUi((s) => s.setDraft);
   const showToast = useUi((s) => s.showToast);
+  const setPrefill = useUi((s) => s.setPrefill);
   const customFoods = useStore((s) => s.customFoods);
   const ai = useStore((s) => s.ai);
-  const setPrefill = useUi((s) => s.setPrefill);
-  const [web, setWeb] = useState<{ status: 'idle' | 'loading' | 'none' | 'error'; msg?: string }>({ status: 'idle' });
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [state, setState] = useState<State>({ kind: 'starting' });
+  // En Android se abre primero el escáner de Google; la cámara dentro de la app queda como alternativa.
+  const [inApp, setInApp] = useState(!Capacitor.isNativePlatform());
+  const [state, setState] = useState<State>({ kind: inApp ? 'starting' : 'opening' });
   const [manual, setManual] = useState('');
   const [session, setSession] = useState(0);
+  const [web, setWeb] = useState<{ status: 'idle' | 'loading' | 'none' | 'error'; msg?: string }>({ status: 'idle' });
+  const [cameraId, setCameraId] = useState<string | undefined>(savedCamera);
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [caps, setCaps] = useState<CameraCaps>({});
+  const [zoom, setZoom] = useState(2);
+  const [torch, setTorch] = useState(false);
   const busy = useRef(false);
-  const streamRef = useRef<MediaStream | null>(null);
+  const trackRef = useRef<MediaStreamTrack | null>(null);
+  const autoPicked = useRef(false);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
 
   const stopCamera = () => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
+    trackRef.current?.stop();
+    trackRef.current = null;
   };
 
   const handleCode = useCallback(
@@ -69,12 +93,34 @@ export default function Scanner() {
     },
     [customFoods, meal, setDraft],
   );
+  const handleRef = useRef(handleCode);
+  handleRef.current = handleCode;
 
+  // Escáner de Google (Android).
   useEffect(() => {
+    if (inApp) return;
+    let alive = true;
+    busy.current = false;
+    setState({ kind: 'opening' });
+    void googleScan().then((res) => {
+      if (!alive) return;
+      if (res.status === 'code') void handleRef.current(res.code);
+      else if (res.status === 'cancelled') setState({ kind: 'cancelled' });
+      else setInApp(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [inApp, session]);
+
+  // Cámara dentro de la app.
+  useEffect(() => {
+    if (!inApp) return;
     let stream: MediaStream | null = null;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     busy.current = false;
+    setTorch(false);
     setState({ kind: 'starting' });
 
     (async () => {
@@ -82,11 +128,15 @@ export default function Scanner() {
         setState({ kind: 'no-camera', reason: 'Este dispositivo no permite usar la cámara desde la app.' });
         return;
       }
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
+      const open = (id?: string) =>
+        navigator.mediaDevices.getUserMedia({
           audio: false,
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { ...(id ? { deviceId: { exact: id } } : { facingMode: { ideal: 'environment' } }), width: { ideal: 1920 }, height: { ideal: 1080 } },
         });
+      let opened: MediaStream;
+      try {
+        // Si la cámara guardada ya no existe se vuelve a la trasera por defecto.
+        opened = await open(cameraId).catch((e) => (cameraId ? open() : Promise.reject(e)));
       } catch (e) {
         const denied = e instanceof DOMException && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
         setState({
@@ -95,31 +145,63 @@ export default function Scanner() {
         });
         return;
       }
+      stream = opened;
       if (stopped) {
-        stream.getTracks().forEach((t) => t.stop());
+        opened.getTracks().forEach((t) => t.stop());
         return;
       }
-      streamRef.current = stream;
+      const track = opened.getVideoTracks()[0];
+      trackRef.current = track;
+
+      // En teléfonos con varios lentes se elige la cámara principal, que es la que enfoca de cerca.
+      const list = await backCameras();
+      if (stopped) return;
+      setCameras(list);
+      if (!cameraId && !autoPicked.current && list.length > 1 && list[0].label && track.label !== list[0].label) {
+        autoPicked.current = true;
+        setCameraId(list[0].deviceId);
+        return;
+      }
+
+      const c = cameraCaps(track);
+      setCaps(c);
+      if (c.focusMode?.includes('continuous')) await applyCamera(track, { focusMode: 'continuous' });
+      // Con algo de zoom el teléfono se sostiene más lejos, donde la cámara sí logra enfocar.
+      if (c.zoom) await applyCamera(track, { zoom: Math.min(c.zoom.max, Math.max(c.zoom.min, zoomRef.current)) });
+
       const video = videoRef.current;
       if (!video) return;
-      video.srcObject = stream;
+      video.srcObject = opened;
       await video.play().catch(() => undefined);
       const detector = await getDetector();
       if (stopped) return;
       setState({ kind: 'scanning' });
 
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      let frame = 0;
       const tick = async () => {
         if (stopped) return;
-        if (!busy.current && video.readyState >= 2) {
+        if (!busy.current && video.readyState >= 2 && video.videoWidth > 0 && ctx) {
           try {
-            const found = await detector.detect(video);
+            // Se lee sobre todo la franja central (donde está el marco): es más rápido y preciso.
+            const full = ++frame % 4 === 0;
+            const vw = video.videoWidth;
+            const vh = video.videoHeight;
+            const cw = full ? vw : Math.round(vw * 0.84);
+            const ch = full ? vh : Math.round(vh * 0.46);
+            const scale = Math.min(1, 1400 / cw);
+            canvas.width = Math.round(cw * scale);
+            canvas.height = Math.round(ch * scale);
+            ctx.drawImage(video, (vw - cw) / 2, (vh - ch) / 2, cw, ch, 0, 0, canvas.width, canvas.height);
+            const found = await detector.detect(canvas);
             const hit = found.map((f) => f.rawValue).find(isValidBarcode);
-            if (hit && !stopped) void handleCode(hit);
+            if (hit && !stopped) void handleRef.current(hit);
           } catch {
             /* cuadro no legible: se reintenta */
           }
         }
-        timer = setTimeout(tick, 180);
+        timer = setTimeout(tick, 140);
       };
       void tick();
     })();
@@ -129,7 +211,7 @@ export default function Scanner() {
       clearTimeout(timer);
       stream?.getTracks().forEach((t) => t.stop());
     };
-  }, [handleCode, session]);
+  }, [inApp, session, cameraId]);
 
   const scanFile = async (file: File | undefined) => {
     if (!file) return;
@@ -161,20 +243,97 @@ export default function Scanner() {
     }
   };
 
+  const changeZoom = (z: number) => {
+    setZoom(z);
+    if (trackRef.current && caps.zoom) void applyCamera(trackRef.current, { zoom: Math.min(caps.zoom.max, Math.max(caps.zoom.min, z)) });
+  };
+
+  const toggleTorch = () => {
+    if (!trackRef.current) return;
+    void applyCamera(trackRef.current, { torch: !torch });
+    setTorch(!torch);
+  };
+
+  const nextCamera = () => {
+    if (cameras.length < 2) return;
+    const current = cameras.findIndex((c) => c.label === trackRef.current?.label);
+    const next = cameras[(current + 1) % cameras.length];
+    try {
+      localStorage.setItem(CAMERA_KEY, next.deviceId);
+    } catch {
+      /* sin almacenamiento */
+    }
+    autoPicked.current = true;
+    setCameraId(next.deviceId);
+  };
+
+  const refocus = () => {
+    const track = trackRef.current;
+    if (!track || !caps.focusMode?.includes('continuous')) return;
+    // Volver a pedir el enfoque continuo obliga a la cámara a enfocar otra vez.
+    const first = caps.focusMode.includes('single-shot') ? 'single-shot' : 'continuous';
+    void applyCamera(track, { focusMode: first }).then(() => setTimeout(() => void applyCamera(track, { focusMode: 'continuous' }), 900));
+  };
+
   const manualCode = manual.replace(/\D/g, '');
-  const showVideo = state.kind === 'starting' || state.kind === 'scanning' || state.kind === 'looking';
+  const showVideo = inApp && (state.kind === 'starting' || state.kind === 'scanning' || state.kind === 'looking');
   const restart = () => setSession((s) => s + 1);
+  const zoomOptions = caps.zoom ? ZOOMS.filter((z) => z >= caps.zoom!.min && z <= caps.zoom!.max) : [];
 
   return (
     <div className="screen">
       <Header title="Escanear producto" />
 
-      {showVideo && (
-        <div className="scanner">
-          <video ref={videoRef} playsInline muted aria-label="Vista de la cámara" />
-          <div className="frame" />
-          <div className="hint">{state.kind === 'looking' ? `Buscando ${state.code}…` : state.kind === 'starting' ? 'Abriendo cámara…' : 'Apunta al código de barras'}</div>
+      {state.kind === 'opening' && <Spinner label="Abriendo el escáner…" />}
+
+      {state.kind === 'cancelled' && (
+        <div className="card col">
+          <h2 className="card-title">Escanea el código de barras</h2>
+          <p className="small muted">El escáner enfoca y acerca la imagen solo. Sostén el teléfono a unos 15 cm del código, con buena luz.</p>
+          <button className="btn" onClick={restart}>
+            <ScanBarcode size={18} /> Abrir el escáner
+          </button>
+          <button className="btn secondary" onClick={() => setInApp(true)}>
+            Usar la cámara dentro de la app
+          </button>
         </div>
+      )}
+
+      {showVideo && (
+        <>
+          <div className="scanner" onClick={refocus}>
+            <video ref={videoRef} playsInline muted aria-label="Vista de la cámara" />
+            <div className="frame" />
+            <div className="hint">{state.kind === 'looking' ? `Buscando ${state.code}…` : state.kind === 'starting' ? 'Abriendo cámara…' : 'Apunta al código de barras'}</div>
+          </div>
+          {state.kind === 'scanning' && (
+            <>
+              {(zoomOptions.length > 1 || caps.torch || cameras.length > 1) && (
+                <div className="chips" role="group" aria-label="Controles de la cámara">
+                  {zoomOptions.length > 1 &&
+                    zoomOptions.map((z) => (
+                      <button key={z} className={`chip ${zoom === z ? 'active' : ''}`} aria-pressed={zoom === z} onClick={() => changeZoom(z)}>
+                        {z}×
+                      </button>
+                    ))}
+                  {caps.torch && (
+                    <button className={`chip ${torch ? 'active' : ''}`} aria-pressed={torch} onClick={toggleTorch}>
+                      <Flashlight size={16} /> Linterna
+                    </button>
+                  )}
+                  {cameras.length > 1 && (
+                    <button className="chip" onClick={nextCamera}>
+                      <SwitchCamera size={16} /> Cambiar cámara
+                    </button>
+                  )}
+                </div>
+              )}
+              <p className="xs muted">
+                Si se ve borroso, aleja el teléfono unos 15 cm y toca la imagen para volver a enfocar.{cameras.length > 1 ? ' Si sigue sin enfocar, prueba con «Cambiar cámara».' : ''}
+              </p>
+            </>
+          )}
+        </>
       )}
 
       {state.kind === 'looking' && <Spinner label="Consultando Open Food Facts…" />}
@@ -242,7 +401,7 @@ export default function Scanner() {
         </div>
       )}
 
-      {(state.kind === 'scanning' || state.kind === 'starting' || state.kind === 'no-camera') && (
+      {(state.kind === 'scanning' || state.kind === 'starting' || state.kind === 'no-camera' || state.kind === 'cancelled') && (
         <div className="card col">
           <Field label="¿No lee el código? Escríbelo" value={manual} onChange={setManual} numeric placeholder="Ej: 7802800716777" />
           <button className="btn secondary" disabled={manualCode.length < 8} onClick={() => void handleCode(manualCode)}>
