@@ -63,18 +63,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # La API de GitHub a veces responde con un error pasajero: se reintenta, y si el release
-          # quedó creado a medias solo se sube el archivo.
-          for intento in 1 2 3 4 5; do
+          # La API de GitHub a veces responde con errores pasajeros: se reintenta con pausas, y si el
+          # release quedó creado a medias (como borrador) se completa en vez de crearlo de nuevo.
+          for intento in 1 2 3 4 5 6 7 8; do
             if gh release view "v${VERSION_NAME}" >/dev/null 2>&1; then
-              gh release upload "v${VERSION_NAME}" "Kaizen-${VERSION_NAME}.apk" --clobber && exit 0
+              gh release upload "v${VERSION_NAME}" "Kaizen-${VERSION_NAME}.apk" --clobber \
+                && gh release edit "v${VERSION_NAME}" --draft=false --latest && exit 0
             else
               gh release create "v${VERSION_NAME}" "Kaizen-${VERSION_NAME}.apk" \
                 --target "${GITHUB_SHA}" \
                 --title "Kaizen ${VERSION_NAME}" \
                 --notes "Descarga el archivo .apk desde tu teléfono Android y ábrelo para instalar o actualizar Kaizen. Tus datos se conservan al actualizar." && exit 0
             fi
-            echo "Intento ${intento} fallido; se reintenta en 20 s"
-            sleep 20
+            echo "Intento ${intento} fallido; se reintenta en 45 s"
+            sleep 45
           done
           exit 1
