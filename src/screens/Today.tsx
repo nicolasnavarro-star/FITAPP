@@ -108,7 +108,7 @@ export default function Today() {
               >
                 {weekdayShort(d).slice(0, 2)}
                 <span className="ring-day">
-                  <Ring value={kcal} target={targets.kcal} size={38} stroke={4} overColor="var(--carbs)" label="" />
+                  <Ring value={kcal} target={targets.kcal} size={38} stroke={4} overColor="var(--gold)" label="" />
                   <span className="num">{parseDateKey(d).getDate()}</span>
                 </span>
               </button>

@@ -1,22 +1,28 @@
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor, SystemBars, SystemBarsStyle } from '@capacitor/core';
-import { Camera, Dumbbell, Plus, ScanBarcode, Search, TrendingUp, User, Utensils, Zap } from 'lucide-react';
+import { Camera, Dumbbell, Mountain as MountainIcon, Plus, ScanBarcode, Search, TrendingUp, User, Utensils, Zap } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Sheet, Toast } from './components/ui';
 import { MEALS, defaultMeal } from './lib/meals';
+import { restoreRecording } from './lib/recorder';
 import type { MealId } from './lib/types';
 import { friendlyDate } from './lib/util';
 import { canGoBack, push, replace, useRoute } from './router';
+import ActivityDetail from './screens/ActivityDetail';
 import AddFood from './screens/AddFood';
 import AiSettings from './screens/AiSettings';
 import CustomFood from './screens/CustomFood';
 import Equipment from './screens/Equipment';
+import Mountain from './screens/Mountain';
 import FoodDetail from './screens/FoodDetail';
 import Onboarding from './screens/Onboarding';
 import PhotoAI from './screens/PhotoAI';
 import PlanSetup from './screens/PlanSetup';
 import Profile from './screens/Profile';
 import Progress from './screens/Progress';
+import Record from './screens/Record';
+import RouteDetail from './screens/RouteDetail';
+import RoutePlan from './screens/RoutePlan';
 import Scanner from './screens/Scanner';
 import TargetsScreen from './screens/Targets';
 import Today from './screens/Today';
@@ -28,6 +34,7 @@ const TABS = [
   { path: '/', label: 'Diario', icon: Utensils },
   { path: '/progress', label: 'Progreso', icon: TrendingUp },
   { path: '/train', label: 'Entreno', icon: Dumbbell },
+  { path: '/mountain', label: 'Montaña', icon: MountainIcon },
   { path: '/profile', label: 'Perfil', icon: User },
 ];
 
@@ -115,6 +122,16 @@ function Screen({ path }: { path: string }) {
       return <Train />;
     case '/profile':
       return <Profile />;
+    case '/mountain':
+      return <Mountain />;
+    case '/record':
+      return <Record />;
+    case '/activity':
+      return <ActivityDetail />;
+    case '/route-plan':
+      return <RoutePlan />;
+    case '/route':
+      return <RouteDetail />;
     case '/add':
       return <AddFood />;
     case '/food':
@@ -145,6 +162,10 @@ function Screen({ path }: { path: string }) {
 export default function App() {
   useTheme();
   useAndroidBackButton();
+  useEffect(() => {
+    // Si Android cerró la app en plena salida, la grabación se recupera en pausa.
+    void restoreRecording().then((found) => found && useUi.getState().showToast('Se retomó tu actividad en curso. Está en Montaña.'));
+  }, []);
   const route = useRoute();
   const hasProfile = useStore((s) => s.profile !== null);
   const [adding, setAdding] = useState(false);
@@ -164,22 +185,18 @@ export default function App() {
       <Screen path={route.path} />
       {isTab && (
         <nav className="tabbar">
-          {TABS.slice(0, 2).map(({ path, label, icon: Icon }) => (
-            <button key={path} className={`tab ${route.path === path ? 'active' : ''}`} aria-current={route.path === path} onClick={() => replace(path)}>
-              <Icon size={22} />
-              {label}
-            </button>
-          ))}
-          <button className="fab" aria-label="Registrar comida" onClick={() => setAdding(true)}>
-            <Plus size={28} />
-          </button>
-          {TABS.slice(2).map(({ path, label, icon: Icon }) => (
+          {TABS.map(({ path, label, icon: Icon }) => (
             <button key={path} className={`tab ${route.path === path ? 'active' : ''}`} aria-current={route.path === path} onClick={() => replace(path)}>
               <Icon size={22} />
               {label}
             </button>
           ))}
         </nav>
+      )}
+      {route.path === '/' && (
+        <button className="fab" aria-label="Registrar comida" onClick={() => setAdding(true)}>
+          <Plus size={28} />
+        </button>
       )}
       {adding && <AddSheet onClose={() => setAdding(false)} />}
       <Toast />

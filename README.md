@@ -1,6 +1,6 @@
-# Healty
+# Kaizen Health & Fitness
 
-App personal para Android: contador de calorías con IA, seguimiento de progreso y rutinas de entrenamiento. Gratuita, sin cuentas ni servidores: todos los datos viven en tu teléfono.
+App personal para Android: contador de calorías con IA, seguimiento de progreso, rutinas de entrenamiento y registro de salidas a la montaña con GPS. Gratuita, sin cuentas ni servidores: todos los datos viven en tu teléfono.
 
 ## Qué hace
 
@@ -11,11 +11,12 @@ App personal para Android: contador de calorías con IA, seguimiento de progreso
 - **Progreso**: registro de peso, gráfico con línea de meta, fecha estimada para llegar al objetivo, IMC, calorías de la semana y racha de días.
 - **Rutinas**: genera una rutina semanal de cuerpo completo, torso/pierna o empuje/tirón/pierna según tus días disponibles, equipamiento (gimnasio, mancuernas o peso corporal) y nivel. Registra series, peso y repeticiones con temporizador de descanso.
 - **Equipo y ejercicios**: saca una foto a una máquina, mancuernas o cualquier implemento y la IA lo identifica y sugiere ejercicios para el grupo muscular que elijas, con pasos, consejo de técnica y enlaces a videos e imágenes de referencia. Con Gemini también puede generar una ilustración del ejercicio (Google suele reservar los modelos de imagen para cuentas con facturación activada).
-- **Respaldo**: exporta e importa todo tu historial en un archivo.
+- **Montaña**: graba cerros, trail, caminatas o salidas en bici con GPS (también con la pantalla apagada): recorrido en mapa topográfico, de calles o satelital, distancia, desnivel, altitud, ritmo, velocidad de ascenso y parciales por kilómetro. Traza rutas tocando el mapa (siguiendo senderos o en línea recta) con su perfil de altitud y tiempo estimado, importa y exporta GPX (compatible con Strava, Suunto o Garmin) y consulta el clima de tu zona con avisos de viento, UV y lluvia.
+- **Respaldo**: exporta e importa todo tu historial, incluidos los recorridos, en un archivo.
 
 ## Instalar en tu teléfono
 
-1. En el teléfono, abre la página **Releases** de este repositorio y descarga el archivo `Healty-x.y.z.apk` más reciente.
+1. En el teléfono, abre la página **Releases** de este repositorio y descarga el archivo `Kaizen-x.y.z.apk` más reciente.
 2. Abre el archivo. Android pedirá permiso para «instalar apps desconocidas» desde el navegador: acéptalo.
 3. Para actualizar, instala un APK más nuevo encima: tus datos se conservan.
 
@@ -45,7 +46,7 @@ cd android && ./gradlew assembleRelease   # requiere el SDK de Android y JDK 21
 
 Estructura principal:
 
-- `src/lib/`: lógica sin interfaz (cálculo de metas, base de alimentos, Open Food Facts, IA, ejercicios y generador de rutinas).
+- `src/lib/`: lógica sin interfaz (cálculo de metas, base de alimentos, Open Food Facts, IA, ejercicios, generador de rutinas y el módulo de montaña: cálculo de recorridos, GPS, clima y trazado de rutas).
 - `src/screens/`: pantallas de la app.
 - `src/store.ts`: estado y guardado local.
 - `android/`: proyecto nativo generado por Capacitor.
@@ -57,6 +58,10 @@ Android solo permite actualizar una app si el APK nuevo está firmado con la mis
 
 Mientras el repositorio sea público, cualquiera podría firmar un APK con esa misma clave, así que instala solo los APK de tus propios Releases. Si prefieres una clave privada, define las variables `KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` y `KEY_PASSWORD` en la compilación (cambiar de clave obliga a desinstalar la app una vez; haz un respaldo antes).
 
+## Servicios externos del módulo de montaña
+
+Todos son gratuitos y no requieren clave: teselas de mapa de OpenTopoMap, OpenStreetMap y Esri; clima y modelo de terreno de [Open-Meteo](https://open-meteo.com); y trazado por senderos de [BRouter](https://brouter.de) sobre datos de OpenStreetMap. Sin conexión el GPS sigue grabando: el mapa de fondo no carga y el desnivel se calcula con la altitud del teléfono.
+
 ## Aviso
 
-Los valores nutricionales y las metas son estimaciones, y las rutinas son orientaciones generales. La app no reemplaza el consejo de profesionales de la salud o del deporte.
+Los valores nutricionales y las metas son estimaciones, y las rutinas son orientaciones generales. En la montaña no dependas solo del teléfono: el GPS, el clima y las rutas pueden fallar o ser inexactos. La app no reemplaza el consejo de profesionales de la salud o del deporte.

@@ -231,3 +231,77 @@ export function BarChart({ data, goal, ariaLabel }: { data: BarDatum[]; goal?: n
     </div>
   );
 }
+
+/** Perfil de altitud de un recorrido: altitud (m) según la distancia recorrida, con lectura al tocar. */
+export function ProfileChart({ data }: { data: { dist: number; ele: number }[] }) {
+  const W = 340;
+  const H = 150;
+  const pad = { l: 40, r: 8, t: 12, b: 22 };
+  const ref = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState<number | null>(null);
+  if (data.length < 2) return null;
+  const total = data[data.length - 1].dist || 1;
+  const ticks = niceTicks(Math.min(...data.map((d) => d.ele)), Math.max(...data.map((d) => d.ele)), 3);
+  const yMin = ticks[0];
+  const yMax = ticks[ticks.length - 1];
+  const sx = (d: number) => pad.l + (d / total) * (W - pad.l - pad.r);
+  const sy = (e: number) => pad.t + (1 - (e - yMin) / (yMax - yMin)) * (H - pad.t - pad.b);
+  const line = data.map((d, i) => `${i === 0 ? 'M' : 'L'}${sx(d.dist).toFixed(1)},${sy(d.ele).toFixed(1)}`).join(' ');
+  const onMove = (clientX: number) => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = ((clientX - rect.left) / rect.width) * W;
+    let best = 0;
+    data.forEach((d, i) => {
+      if (Math.abs(sx(d.dist) - x) < Math.abs(sx(data[best].dist) - x)) best = i;
+    });
+    setActive(best);
+  };
+  const ap = active !== null ? data[active] : null;
+  const km = (m: number) => (m / 1000).toLocaleString('es-CL', { maximumFractionDigits: 1 });
+  return (
+    <div
+      className="chart"
+      ref={ref}
+      onPointerDown={(e) => onMove(e.clientX)}
+      onPointerMove={(e) => (e.pointerType === 'mouse' || e.buttons > 0) && onMove(e.clientX)}
+      onPointerLeave={() => setActive(null)}
+    >
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Perfil de altitud del recorrido">
+        <defs>
+          <linearGradient id="profile-area" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="var(--accent)" stopOpacity={0.35} />
+            <stop offset="1" stopColor="var(--accent)" stopOpacity={0.03} />
+          </linearGradient>
+        </defs>
+        {ticks.map((t) => (
+          <g key={t}>
+            <line className="grid" x1={pad.l} x2={W - pad.r} y1={sy(t)} y2={sy(t)} />
+            <text x={pad.l - 6} y={sy(t) + 4} textAnchor="end">
+              {fmt(t)}
+            </text>
+          </g>
+        ))}
+        <path d={`${line} L${sx(total).toFixed(1)},${H - pad.b} L${pad.l},${H - pad.b} Z`} fill="url(#profile-area)" />
+        <path d={line} fill="none" stroke="var(--accent)" strokeWidth={2} strokeLinejoin="round" />
+        {ap && (
+          <g>
+            <line x1={sx(ap.dist)} x2={sx(ap.dist)} y1={pad.t} y2={H - pad.b} stroke="var(--text-3)" strokeWidth={1} />
+            <circle cx={sx(ap.dist)} cy={sy(ap.ele)} r={5} fill="var(--accent)" stroke="var(--surface)" strokeWidth={2} />
+          </g>
+        )}
+        <text x={pad.l} y={H - 4} textAnchor="start">
+          0 km
+        </text>
+        <text x={W - pad.r} y={H - 4} textAnchor="end">
+          {km(total)} km
+        </text>
+      </svg>
+      {ap && (
+        <div className="chart-tip" style={{ left: `${clamp((sx(ap.dist) / W) * 100, 18, 82)}%` }}>
+          km {km(ap.dist)} · {fmt(ap.ele)} m
+        </div>
+      )}
+    </div>
+  );
+}

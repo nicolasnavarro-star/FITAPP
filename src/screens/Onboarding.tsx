@@ -1,5 +1,6 @@
-import { ArrowRight, Flame, Scale, Sparkles, TrendingDown, TrendingUp } from 'lucide-react';
+import { ArrowRight, Mountain, Scale, Sparkles, TrendingDown, TrendingUp } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import logoUrl from '../assets/logo.jpg';
 import { Field, Header, OptionCard, Segmented } from '../components/ui';
 import { ACTIVITY, GOALS, bmi, computeTargets, weeksToGoal } from '../lib/nutrition';
 import type { Activity, Goal, Profile, Sex } from '../lib/types';
@@ -113,10 +114,8 @@ export default function Onboarding({ editing = false }: { editing?: boolean }) {
 
         {step === 0 && (
           <div className="col" style={{ gap: 18, marginTop: 24 }}>
-            <span className="badge" style={{ width: 64, height: 64, borderRadius: 20 }}>
-              <Flame size={34} />
-            </span>
-            <h1 className="title-xl">Bienvenido a Healty</h1>
+            <img src={logoUrl} alt="Kaizen Health & Fitness" style={{ width: '100%', maxWidth: 300, aspectRatio: '1', alignSelf: 'center', borderRadius: 28, objectFit: 'cover' }} />
+            <h1 className="title-xl">Bienvenido a Kaizen</h1>
             <p className="muted">Cuenta calorías con ayuda de IA, sigue tu progreso y entrena con rutinas hechas para tu objetivo. Todo queda guardado en tu teléfono.</p>
             <div className="col">
               <div className="row small">
@@ -127,6 +126,9 @@ export default function Onboarding({ editing = false }: { editing?: boolean }) {
               </div>
               <div className="row small">
                 <TrendingUp size={18} color="var(--accent)" /> Rutinas y registro de entrenamientos
+              </div>
+              <div className="row small">
+                <Mountain size={18} color="var(--accent)" /> Rutas de cerro con GPS, desnivel y clima
               </div>
             </div>
             <Field label="¿Cómo te llamas? (opcional)" value={name} onChange={setName} placeholder="Tu nombre" />

@@ -1,7 +1,10 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Healty</string>
-    <string name="title_activity_main">Healty</string>
+    <string name="app_name">Kaizen</string>
+    <string name="title_activity_main">Kaizen</string>
     <string name="package_name">cl.healty.app</string>
     <string name="custom_url_scheme">cl.healty.app</string>
+    <string name="capacitor_background_geolocation_notification_channel_name">Registro de actividad</string>
+    <string name="capacitor_background_geolocation_notification_icon">drawable/ic_stat_kaizen</string>
+    <string name="capacitor_background_geolocation_notification_color">#7fae8e</string>
 </resources>

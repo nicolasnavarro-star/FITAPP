@@ -1,14 +1,14 @@
 import { Capacitor } from '@capacitor/core';
-import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
-import { Share } from '@capacitor/share';
 import { ChevronRight, Download, Sparkles, Target, Trash2, Upload, UserCog } from 'lucide-react';
 import { type ReactNode, useRef, useState } from 'react';
 import { Segmented, Sheet } from '../components/ui';
 import { aiReady } from '../lib/ai';
+import { buildBackup, restoreTracks } from '../lib/backup';
+import { shareFile } from '../lib/share';
 import { ACTIVITY, GOALS } from '../lib/nutrition';
 import { fmt, todayKey } from '../lib/util';
 import { push } from '../router';
-import { type ThemePref, exportData, useCurrentWeight, useStore, useTargets, useUi } from '../store';
+import { type ThemePref, useCurrentWeight, useStore, useTargets, useUi } from '../store';
 
 function Row({ icon, title, sub, onClick, danger }: { icon: ReactNode; title: string; sub?: string; onClick: () => void; danger?: boolean }) {
   return (
@@ -28,20 +28,8 @@ function Row({ icon, title, sub, onClick, danger }: { icon: ReactNode; title: st
 }
 
 async function saveBackup(): Promise<string> {
-  const name = `healty-respaldo-${todayKey()}.json`;
-  const data = exportData();
-  if (Capacitor.isNativePlatform()) {
-    const file = await Filesystem.writeFile({ path: name, data, directory: Directory.Cache, encoding: Encoding.UTF8 });
-    await Share.share({ title: 'Respaldo de Healty', files: [file.uri] });
-    return 'Respaldo listo para guardar o compartir';
-  }
-  const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return 'Respaldo descargado';
+  await shareFile(`kaizen-respaldo-${todayKey()}.json`, await buildBackup(), 'application/json', 'Respaldo de Kaizen');
+  return Capacitor.isNativePlatform() ? 'Respaldo listo para guardar o compartir' : 'Respaldo descargado';
 }
 
 export default function Profile() {
@@ -75,7 +63,7 @@ export default function Profile() {
       if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as { entries?: unknown }).entries)) throw new Error('formato');
       setPendingImport(parsed);
     } catch {
-      showToast('El archivo no es un respaldo válido de Healty');
+      showToast('El archivo no es un respaldo válido de Kaizen');
     }
   };
 
@@ -128,9 +116,9 @@ export default function Profile() {
           value={theme}
           onChange={setTheme}
           options={[
-            { value: 'system', label: 'Sistema' },
-            { value: 'light', label: 'Claro' },
             { value: 'dark', label: 'Oscuro' },
+            { value: 'light', label: 'Claro' },
+            { value: 'system', label: 'Sistema' },
           ]}
         />
       </div>
@@ -158,20 +146,21 @@ export default function Profile() {
       </div>
 
       <p className="xs muted center">
-        Healty 1.0 · Los valores nutricionales son estimaciones y la app no reemplaza el consejo de un profesional de la salud. Datos de productos: Open Food Facts.
+        Kaizen Health & Fitness · Los valores nutricionales son estimaciones y la app no reemplaza el consejo de un profesional de la salud. Datos de productos: Open Food Facts.
       </p>
 
       {pendingImport !== null && (
         <Sheet title="¿Restaurar este respaldo?" onClose={() => setPendingImport(null)}>
-          <p className="small muted">Se reemplazarán tu perfil, diario, pesos y entrenamientos actuales por los del archivo. Esta acción no se puede deshacer.</p>
+          <p className="small muted">Se reemplazarán tu perfil, diario, pesos, entrenamientos y actividades actuales por los del archivo. Esta acción no se puede deshacer.</p>
           <button
             className="btn"
             onClick={() => {
               try {
                 importData(pendingImport);
+                void restoreTracks(pendingImport);
                 showToast('Respaldo restaurado');
               } catch {
-                showToast('El archivo no es un respaldo válido de Healty');
+                showToast('El archivo no es un respaldo válido de Kaizen');
               }
               setPendingImport(null);
             }}

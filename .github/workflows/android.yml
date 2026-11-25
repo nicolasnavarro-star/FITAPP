@@ -52,18 +52,18 @@ jobs:
           ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Preparar archivo
-        run: cp android/app/build/outputs/apk/release/app-release.apk "Healty-${VERSION_NAME}.apk"
+        run: cp android/app/build/outputs/apk/release/app-release.apk "Kaizen-${VERSION_NAME}.apk"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Healty-${{ env.VERSION_NAME }}
-          path: Healty-*.apk
+          name: Kaizen-${{ env.VERSION_NAME }}
+          path: Kaizen-*.apk
 
       - name: Publicar en Releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${VERSION_NAME}" "Healty-${VERSION_NAME}.apk" \
+          gh release create "v${VERSION_NAME}" "Kaizen-${VERSION_NAME}.apk" \
             --target "${GITHUB_SHA}" \
-            --title "Healty ${VERSION_NAME}" \
-            --notes "Descarga el archivo .apk desde tu teléfono Android y ábrelo para instalar o actualizar Healty. Tus datos se conservan al actualizar."
+            --title "Kaizen ${VERSION_NAME}" \
+            --notes "Descarga el archivo .apk desde tu teléfono Android y ábrelo para instalar o actualizar Kaizen. Tus datos se conservan al actualizar."

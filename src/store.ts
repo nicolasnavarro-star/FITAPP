@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { DEFAULT_CLAUDE_MODEL, DEFAULT_GEMINI_MODEL } from './lib/ai';
 import { computeTargets } from './lib/nutrition';
-import type { ActiveWorkout, AiSettings, Entry, Food, MealId, Plan, Profile, SavedEquipment, SetLog, Targets, WeightLog, WorkoutLog } from './lib/types';
+import type { ActiveWorkout, AiSettings, OutdoorActivity, PlannedRoute, Entry, Food, MealId, Plan, Profile, SavedEquipment, SetLog, Targets, WeightLog, WorkoutLog } from './lib/types';
 import { todayKey, uid } from './lib/util';
 
 export type ThemePref = 'system' | 'light' | 'dark';
@@ -22,6 +22,11 @@ interface Data {
   activeWorkout: ActiveWorkout | null;
   /** Equipos identificados con foto y sus ejercicios sugeridos. */
   equipment: SavedEquipment[];
+  /** Actividades de montaña y rutas trazadas (sus recorridos completos viven en IndexedDB). */
+  activities: OutdoorActivity[];
+  routes: PlannedRoute[];
+  /** Última ubicación conocida, para mostrar el clima sin esperar al GPS. */
+  lastLoc: { lat: number; lon: number } | null;
   ai: AiSettings;
   theme: ThemePref;
 }
@@ -48,6 +53,12 @@ interface Actions {
   removeWorkout: (id: string) => void;
   saveEquipment: (e: SavedEquipment) => void;
   removeEquipment: (id: string) => void;
+  addActivity: (a: OutdoorActivity) => void;
+  updateActivity: (id: string, patch: Partial<OutdoorActivity>) => void;
+  removeActivity: (id: string) => void;
+  saveRoute: (r: PlannedRoute) => void;
+  removeRoute: (id: string) => void;
+  setLastLoc: (lat: number, lon: number) => void;
   setAi: (patch: Partial<AiSettings>) => void;
   setTheme: (t: ThemePref) => void;
   importData: (raw: unknown) => void;
@@ -66,8 +77,11 @@ const initial: Data = {
   workouts: [],
   activeWorkout: null,
   equipment: [],
+  activities: [],
+  routes: [],
+  lastLoc: null,
   ai: { provider: 'gemini', geminiKey: '', geminiModel: DEFAULT_GEMINI_MODEL, claudeKey: '', claudeModel: DEFAULT_CLAUDE_MODEL },
-  theme: 'system',
+  theme: 'dark',
 };
 
 const DATA_KEYS = Object.keys(initial) as (keyof Data)[];
@@ -174,6 +188,13 @@ export const useStore = create<Data & Actions>()(
       saveEquipment: (e) => set((s) => ({ equipment: [e, ...s.equipment.filter((x) => x.id !== e.id)].slice(0, 30) })),
       removeEquipment: (id) => set((s) => ({ equipment: s.equipment.filter((x) => x.id !== id) })),
 
+      addActivity: (a) => set((s) => ({ activities: [a, ...s.activities.filter((x) => x.id !== a.id)] })),
+      updateActivity: (id, patch) => set((s) => ({ activities: s.activities.map((a) => (a.id === id ? { ...a, ...patch } : a)) })),
+      removeActivity: (id) => set((s) => ({ activities: s.activities.filter((a) => a.id !== id) })),
+      saveRoute: (r) => set((s) => ({ routes: [r, ...s.routes.filter((x) => x.id !== r.id)] })),
+      removeRoute: (id) => set((s) => ({ routes: s.routes.filter((r) => r.id !== id) })),
+      setLastLoc: (lat, lon) => set({ lastLoc: { lat, lon } }),
+
       setAi: (patch) => set((s) => ({ ai: { ...s.ai, ...patch } })),
       setTheme: (theme) => set({ theme }),
 
@@ -201,7 +222,9 @@ export const useStore = create<Data & Actions>()(
     }),
     {
       name: 'healty-v1',
-      version: 1,
+      version: 2,
+      // v2: la app pasó a tema oscuro por defecto.
+      migrate: (persisted, version) => (version < 2 ? { ...(persisted as object), theme: 'dark' } : persisted) as Data & Actions,
       partialize: (s) => Object.fromEntries(DATA_KEYS.map((k) => [k, s[k]])) as unknown as Data & Actions,
     },
   ),

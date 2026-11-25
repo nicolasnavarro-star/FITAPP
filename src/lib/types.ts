@@ -114,6 +114,38 @@ export interface WorkoutLog {
   items: WorkoutItem[];
 }
 
+/** Resumen de una actividad al aire libre; el recorrido completo se guarda aparte. */
+export interface OutdoorActivity {
+  id: string;
+  sport: import('./geo').Sport;
+  name: string;
+  startedAt: number;
+  endedAt: number;
+  distanceM: number;
+  movingSec: number;
+  elapsedSec: number;
+  ascentM: number;
+  descentM: number;
+  maxEle: number | null;
+  minEle: number | null;
+  kcal: number;
+  /** De dónde salen las altitudes: del GPS del teléfono o del modelo de terreno. */
+  eleSource: 'gps' | 'terrain';
+  /** Recorrido reducido para dibujar la miniatura. */
+  preview: import('./geo').LatLon[];
+  routeId?: string;
+}
+
+export interface PlannedRoute {
+  id: string;
+  name: string;
+  createdAt: number;
+  distanceM: number;
+  ascentM: number;
+  descentM: number;
+  preview: import('./geo').LatLon[];
+}
+
 export type AiProvider = 'gemini' | 'claude';
 
 /** Ejercicio sugerido por la IA para un equipo fotografiado. */

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { aiItemToFood } from '../src/lib/ai';
 import { EXERCISES, candidates, getExercise, imagesUrl, videoUrl } from '../src/lib/exercises';
 import { BASE_FOODS, searchFoods } from '../src/lib/foods';
+import { type Pt, TERRAIN, computeStats, estimateKcal, estimateSeconds, fmtDuration, fmtPace, haversine, profile, splits, toGpx } from '../src/lib/geo';
+import { describeWeather } from '../src/lib/weather';
 import { bmr, computeTargets, macrosFor, weeksToGoal } from '../src/lib/nutrition';
 import { mapOffProduct } from '../src/lib/off';
 import { generatePlan } from '../src/lib/routines';
@@ -150,6 +152,80 @@ describe('rutinas', () => {
 
   it('los ids de ejercicios son únicos', () => {
     expect(new Set(EXERCISES.map((e) => e.id)).size).toBe(EXERCISES.length);
+  });
+});
+
+describe('montaña', () => {
+  // Recorrido sintético: 2 km hacia el norte subiendo 300 m, con un punto cada 10 s.
+  const track = (): Pt[] => {
+    const out: Pt[] = [];
+    for (let i = 0; i <= 100; i++) out.push([i * 10000, -33.4 + (i * 20) / 111195, -70.6, 800 + i * 3 + (i % 2 === 0 ? 0.8 : -0.8)]);
+    return out;
+  };
+
+  it('mide distancias entre coordenadas', () => {
+    expect(haversine(-33.4, -70.6, -33.4, -70.6)).toBe(0);
+    expect(haversine(0, 0, 1, 0)).toBeCloseTo(111195, -2);
+  });
+
+  it('calcula distancia, tiempo y desnivel sin inflarlo con el ruido del GPS', () => {
+    const st = computeStats(track(), 'hike');
+    expect(st.distanceM).toBeCloseTo(2000, -1);
+    expect(st.movingSec).toBe(1000);
+    expect(st.ascentM).toBeGreaterThan(285);
+    expect(st.ascentM).toBeLessThan(305);
+    expect(st.descentM).toBe(0);
+    // El suavizado recorta un poco el último punto.
+    expect(Math.round(st.maxEle!)).toBeGreaterThanOrEqual(1095);
+  });
+
+  it('con altitudes del terreno suma el desnivel exacto, sin recortar los extremos', () => {
+    const pts: Pt[] = Array.from({ length: 21 }, (_, i) => [0, -33.4 + i * 0.0005, -70.6, 950 + i * 12]);
+    expect(computeStats(pts, 'hike', TERRAIN).ascentM).toBe(240);
+  });
+
+  it('no cuenta el tiempo detenido ni la distancia de una pausa', () => {
+    const pts = track();
+    // 5 minutos detenido en el mismo lugar y luego un tramo nuevo tras la pausa, 500 m más allá.
+    const last = pts[pts.length - 1];
+    pts.push([last[0] + 100000, last[1], last[2], last[3]], [last[0] + 300000, last[1], last[2], last[3]]);
+    pts.push([last[0] + 900000, last[1] + 500 / 111195, last[2], last[3], 1], [last[0] + 910000, last[1] + 520 / 111195, last[2], last[3]]);
+    const st = computeStats(pts, 'hike');
+    expect(st.distanceM).toBeCloseTo(2020, -1);
+    expect(st.movingSec).toBe(1010);
+  });
+
+  it('arma parciales por kilómetro y perfil de altitud', () => {
+    const parts = splits(track(), 'hike');
+    expect(parts).toHaveLength(2);
+    expect(parts[0].sec).toBeGreaterThanOrEqual(490);
+    expect(parts[0].sec).toBeLessThanOrEqual(520);
+    expect(parts[0].eleChange).toBeGreaterThan(140);
+    const prof = profile(track());
+    expect(prof[prof.length - 1].dist).toBeCloseTo(2000, -1);
+  });
+
+  it('da formato a tiempos y ritmos', () => {
+    expect(fmtDuration(59)).toBe('0:59');
+    expect(fmtDuration(3725)).toBe('1:02:05');
+    expect(fmtPace(1000, 600)).toBe('10:00');
+    expect(fmtPace(5, 600)).toBe('–');
+    expect(estimateSeconds(4500, 450, 'hike')).toBe(7200);
+    expect(estimateKcal('hike', 80, 3600, 500)).toBe(584);
+  });
+
+  it('exporta GPX válido y escapa el nombre', () => {
+    const gpx = toGpx('Cerro <A> & B', track().slice(0, 3));
+    expect(gpx).toContain('<name>Cerro &lt;A&gt; &amp; B</name>');
+    expect(gpx.match(/<trkpt /g)).toHaveLength(3);
+    expect(gpx).toContain('<ele>800.8</ele>');
+    expect(gpx).toContain('<time>1970-01-01T00:00:10.000Z</time>');
+  });
+
+  it('interpreta el clima', () => {
+    expect(describeWeather(0).label).toBe('Despejado');
+    expect(describeWeather(63).kind).toBe('rain');
+    expect(describeWeather(96).kind).toBe('storm');
   });
 });
 
