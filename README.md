@@ -9,6 +9,7 @@ App personal para Android: contador de calorías con IA, seguimiento de progreso
 - **Metas a tu medida**: definición, mantener o ganar músculo, con calorías y macros calculados según tu peso, altura, edad y actividad (fórmula Mifflin-St Jeor). También puedes fijar metas propias.
 - **Progreso**: registro de peso, gráfico con línea de meta, fecha estimada para llegar al objetivo, IMC, calorías de la semana y racha de días.
 - **Rutinas**: genera una rutina semanal de cuerpo completo, torso/pierna o empuje/tirón/pierna según tus días disponibles, equipamiento (gimnasio, mancuernas o peso corporal) y nivel. Registra series, peso y repeticiones con temporizador de descanso.
+- **Equipo y ejercicios**: saca una foto a una máquina, mancuernas o cualquier implemento y la IA lo identifica y sugiere ejercicios para el grupo muscular que elijas, con pasos, consejo de técnica y enlaces a videos e imágenes de referencia. Con Gemini también puede generar una ilustración del ejercicio (Google suele reservar los modelos de imagen para cuentas con facturación activada).
 - **Respaldo**: exporta e importa todo tu historial en un archivo.
 
 ## Instalar en tu teléfono

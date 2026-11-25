@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { aiItemToFood } from '../src/lib/ai';
-import { EXERCISES, candidates, getExercise } from '../src/lib/exercises';
+import { EXERCISES, candidates, getExercise, imagesUrl, videoUrl } from '../src/lib/exercises';
 import { BASE_FOODS, searchFoods } from '../src/lib/foods';
 import { bmr, computeTargets, macrosFor, weeksToGoal } from '../src/lib/nutrition';
 import { mapOffProduct } from '../src/lib/off';
@@ -131,6 +131,13 @@ describe('rutinas', () => {
   it('hay ejercicios para cada patrón con cualquier equipamiento', () => {
     const patterns = new Set(EXERCISES.map((e) => e.pattern));
     for (const p of patterns) for (const eq of equipments) expect(candidates(p, eq).length, `${p}/${eq}`).toBeGreaterThan(0);
+  });
+
+  it('arma enlaces de referencia con el nombre del ejercicio codificado', () => {
+    const video = new URL(videoUrl('Jalón al pecho & más'));
+    expect(video.hostname).toBe('www.youtube.com');
+    expect(video.searchParams.get('search_query')).toBe('cómo hacer Jalón al pecho & más técnica correcta');
+    expect(new URL(imagesUrl('Curl martillo')).searchParams.get('q')).toContain('Curl martillo');
   });
 
   it('los ids de ejercicios son únicos', () => {

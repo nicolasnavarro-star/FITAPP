@@ -293,6 +293,10 @@ p {
   transition: transform 0.08s, opacity 0.15s;
 }
 
+a.btn {
+  text-decoration: none;
+}
+
 .btn:active {
   transform: scale(0.98);
 }

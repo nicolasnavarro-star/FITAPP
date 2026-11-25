@@ -1,7 +1,7 @@
-import { ArrowLeftRight, CalendarCheck, Dumbbell, Play, Settings2, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, CalendarCheck, Camera, ChevronRight, Dumbbell, Images, Play, PlayCircle, Settings2, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Sheet } from '../components/ui';
-import { alternatives, getExercise } from '../lib/exercises';
+import { alternatives, getExercise, imagesUrl, videoUrl } from '../lib/exercises';
 import { EQUIPMENT_LABELS, LEVEL_LABELS, SPLIT_NAMES } from '../lib/routines';
 import type { WorkoutLog } from '../lib/types';
 import { addDays, daysBetween, fmt, formatDate, parseDateKey, todayKey } from '../lib/util';
@@ -10,6 +10,34 @@ import { useStore } from '../store';
 
 function volume(w: WorkoutLog): number {
   return w.items.reduce((a, it) => a + it.sets.reduce((b, s) => b + (s.kg ?? 0) * (s.reps ?? 0), 0), 0);
+}
+
+function EquipmentCard() {
+  return (
+    <button className="card row" style={{ textAlign: 'left', width: '100%' }} onClick={() => push('/equipment')}>
+      <span className="badge">
+        <Camera size={20} />
+      </span>
+      <div className="grow">
+        <h2 className="card-title">¿Qué puedo hacer con este equipo?</h2>
+        <p className="small muted">Saca una foto a una máquina o implemento y mira ejercicios por grupo muscular</p>
+      </div>
+      <ChevronRight size={20} color="var(--text-3)" />
+    </button>
+  );
+}
+
+function ReferenceLinks({ name }: { name: string }) {
+  return (
+    <div className="row">
+      <a className="btn sm grow" href={videoUrl(name)} target="_blank" rel="noreferrer">
+        <PlayCircle size={18} /> Ver video
+      </a>
+      <a className="btn sm secondary grow" href={imagesUrl(name)} target="_blank" rel="noreferrer">
+        <Images size={18} /> Imágenes
+      </a>
+    </div>
+  );
 }
 
 function setCount(w: WorkoutLog): number {
@@ -39,6 +67,7 @@ export default function Train() {
             Crear mi rutina
           </button>
         </div>
+        <EquipmentCard />
       </div>
     );
   }
@@ -81,6 +110,8 @@ export default function Train() {
           </p>
         </div>
       </div>
+
+      <EquipmentCard />
 
       {active && (
         <button className="btn" onClick={() => push('/workout')}>
@@ -154,6 +185,7 @@ export default function Train() {
             {selEx.muscle} · {sel.sets} series de {sel.reps} · descanso {sel.restSec} s
           </p>
           <div className="card small">{selEx.tips}</div>
+          <ReferenceLinks name={selEx.name} />
           <h3 className="card-title row">
             <ArrowLeftRight size={16} /> Cambiar por otro ejercicio
           </h3>

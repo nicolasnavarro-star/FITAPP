@@ -1,7 +1,7 @@
-import { Check, Info, Minus, Plus, Timer, X } from 'lucide-react';
+import { Check, Info, Minus, PlayCircle, Plus, Timer, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Header, Sheet } from '../components/ui';
-import { getExercise } from '../lib/exercises';
+import { getExercise, videoUrl } from '../lib/exercises';
 import { fmt, formatDate, parseNum } from '../lib/util';
 import { back, backToRoot } from '../router';
 import { lastPerformance, useStore, useUi } from '../store';
@@ -227,6 +227,9 @@ export default function Workout() {
         <Sheet title={infoEx.name} onClose={() => setInfo(null)}>
           <p className="small muted">{infoEx.muscle}</p>
           <div className="card small">{infoEx.tips}</div>
+          <a className="btn sm" href={videoUrl(infoEx.name)} target="_blank" rel="noreferrer">
+            <PlayCircle size={18} /> Ver video de referencia
+          </a>
         </Sheet>
       )}
     </>

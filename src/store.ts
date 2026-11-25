@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { DEFAULT_CLAUDE_MODEL, DEFAULT_GEMINI_MODEL } from './lib/ai';
 import { computeTargets } from './lib/nutrition';
-import type { ActiveWorkout, AiSettings, Entry, Food, MealId, Plan, Profile, SetLog, Targets, WeightLog, WorkoutLog } from './lib/types';
+import type { ActiveWorkout, AiSettings, Entry, Food, MealId, Plan, Profile, SavedEquipment, SetLog, Targets, WeightLog, WorkoutLog } from './lib/types';
 import { todayKey, uid } from './lib/util';
 
 export type ThemePref = 'system' | 'light' | 'dark';
@@ -20,6 +20,8 @@ interface Data {
   plan: Plan | null;
   workouts: WorkoutLog[];
   activeWorkout: ActiveWorkout | null;
+  /** Equipos identificados con foto y sus ejercicios sugeridos. */
+  equipment: SavedEquipment[];
   ai: AiSettings;
   theme: ThemePref;
 }
@@ -44,6 +46,8 @@ interface Actions {
   finishWorkout: () => WorkoutLog | null;
   cancelWorkout: () => void;
   removeWorkout: (id: string) => void;
+  saveEquipment: (e: SavedEquipment) => void;
+  removeEquipment: (id: string) => void;
   setAi: (patch: Partial<AiSettings>) => void;
   setTheme: (t: ThemePref) => void;
   importData: (raw: unknown) => void;
@@ -61,6 +65,7 @@ const initial: Data = {
   plan: null,
   workouts: [],
   activeWorkout: null,
+  equipment: [],
   ai: { provider: 'gemini', geminiKey: '', geminiModel: DEFAULT_GEMINI_MODEL, claudeKey: '', claudeModel: DEFAULT_CLAUDE_MODEL },
   theme: 'system',
 };
@@ -165,6 +170,9 @@ export const useStore = create<Data & Actions>()(
       },
       cancelWorkout: () => set({ activeWorkout: null }),
       removeWorkout: (id) => set((s) => ({ workouts: s.workouts.filter((w) => w.id !== id) })),
+
+      saveEquipment: (e) => set((s) => ({ equipment: [e, ...s.equipment.filter((x) => x.id !== e.id)].slice(0, 30) })),
+      removeEquipment: (id) => set((s) => ({ equipment: s.equipment.filter((x) => x.id !== id) })),
 
       setAi: (patch) => set((s) => ({ ai: { ...s.ai, ...patch } })),
       setTheme: (theme) => set({ theme }),

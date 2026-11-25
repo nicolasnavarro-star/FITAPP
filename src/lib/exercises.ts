@@ -142,6 +142,18 @@ export function getExercise(id: string): Exercise {
   return BY_ID.get(id) ?? { id, name: 'Ejercicio', muscle: '', pattern: 'core', eq: 'bw', tips: '' };
 }
 
+/** Búsqueda de videos de técnica en YouTube (en el teléfono se abre en la app de YouTube). */
+export function videoUrl(exerciseName: string): string {
+  return `https://www.youtube.com/results?search_query=${encodeURIComponent(`cómo hacer ${exerciseName} técnica correcta`)}`;
+}
+
+/** Búsqueda de imágenes de referencia del ejercicio. */
+export function imagesUrl(exerciseName: string): string {
+  return `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(`${exerciseName} ejercicio técnica`)}`;
+}
+
+export const MUSCLE_GROUPS = ['Pecho', 'Espalda', 'Hombros', 'Bíceps', 'Tríceps', 'Piernas', 'Glúteos', 'Abdomen'];
+
 const ALLOWED: Record<Equipment, Eq[]> = {
   gym: ['gym', 'db', 'bw'],
   dumbbells: ['db', 'bw'],

@@ -7,6 +7,7 @@ import { canGoBack, replace, useRoute } from './router';
 import AddFood from './screens/AddFood';
 import AiSettings from './screens/AiSettings';
 import CustomFood from './screens/CustomFood';
+import Equipment from './screens/Equipment';
 import FoodDetail from './screens/FoodDetail';
 import Onboarding from './screens/Onboarding';
 import PhotoAI from './screens/PhotoAI';
@@ -76,6 +77,8 @@ function Screen({ path }: { path: string }) {
       return <CustomFood />;
     case '/plan-setup':
       return <PlanSetup />;
+    case '/equipment':
+      return <Equipment />;
     case '/workout':
       return <Workout />;
     case '/edit-profile':

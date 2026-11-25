@@ -108,10 +108,33 @@ export interface WorkoutLog {
 
 export type AiProvider = 'gemini' | 'claude';
 
+/** Ejercicio sugerido por la IA para un equipo fotografiado. */
+export interface EquipmentExercise {
+  name: string;
+  muscles: string;
+  setsReps: string;
+  steps: string[];
+  tip: string;
+}
+
+export interface SavedEquipment {
+  id: string;
+  name: string;
+  summary: string;
+  /** Grupo muscular consultado; vacío si fue una consulta general. */
+  muscle: string;
+  /** Miniatura de la foto (data URL pequeña), si hubo foto. */
+  thumb?: string;
+  exercises: EquipmentExercise[];
+  createdAt: number;
+}
+
 export interface AiSettings {
   provider: AiProvider;
   geminiKey: string;
   geminiModel: string;
+  /** Último modelo de imágenes de Gemini que funcionó con esta clave. */
+  geminiImageModel?: string;
   claudeKey: string;
   claudeModel: string;
 }

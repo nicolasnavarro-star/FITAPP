@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { AiSettings, Food } from './types';
+import type { AiSettings, EquipmentExercise, Food } from './types';
 import { uid } from './util';
 
 /** Un alimento detectado por la IA, con los totales estimados para la porción. */
@@ -24,6 +24,12 @@ export interface AiInput {
   text?: string;
 }
 
+export interface EquipmentResult {
+  equipment: string;
+  summary: string;
+  exercises: EquipmentExercise[];
+}
+
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 export const CLAUDE_MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (más preciso)' },
@@ -34,44 +40,36 @@ export const DEFAULT_CLAUDE_MODEL = CLAUDE_MODELS[0].id;
 
 export class AiError extends Error {}
 
-const PROMPT = `Eres un nutricionista experto en estimar porciones a partir de fotos y descripciones de comida.
-Identifica cada alimento o ingrediente relevante por separado (por ejemplo: arroz, pollo, ensalada, aliño).
-Para cada uno estima el peso de la porción en gramos (o ml si es líquido) y sus calorías y macronutrientes TOTALES para esa porción.
-Usa nombres cortos en español. Sé realista con los tamaños: usa platos, cubiertos y manos como referencia de escala.
-Incluye aceites, salsas y aliños visibles o probables. Si la imagen es una etiqueta nutricional o un producto envasado, usa esos datos.
-Si no hay comida, devuelve una lista vacía y explica por qué en "notes".
-En "notes" escribe una frase breve con los supuestos principales de la estimación.`;
+/** Tipo de dato simple para describir la respuesta esperada; se traduce al formato de cada proveedor. */
+type Shape = 'string' | 'number' | { array: Shape } | { object: Record<string, Shape> };
 
-function userText(input: AiInput): string {
-  const extra = input.text?.trim();
-  if (input.imageBase64) {
-    return extra ? `Analiza la comida de la foto. Información adicional del usuario: ${extra}` : 'Analiza la comida de la foto.';
-  }
-  return `Estima los valores nutricionales de esta comida: ${extra}`;
+function toGeminiSchema(s: Shape): unknown {
+  if (s === 'string') return { type: 'STRING' };
+  if (s === 'number') return { type: 'NUMBER' };
+  if ('array' in s) return { type: 'ARRAY', items: toGeminiSchema(s.array) };
+  return {
+    type: 'OBJECT',
+    properties: Object.fromEntries(Object.entries(s.object).map(([k, v]) => [k, toGeminiSchema(v)])),
+    required: Object.keys(s.object),
+  };
 }
 
-function sanitize(raw: unknown): AiResult {
-  const obj = (raw ?? {}) as { items?: unknown; notes?: unknown };
-  const list = Array.isArray(obj.items) ? obj.items : [];
-  const n = (v: unknown) => {
-    const x = Number(v);
-    return isFinite(x) && x > 0 ? x : 0;
+function toJsonSchema(s: Shape): Record<string, unknown> {
+  if (s === 'string' || s === 'number') return { type: s };
+  if ('array' in s) return { type: 'array', items: toJsonSchema(s.array) };
+  return {
+    type: 'object',
+    properties: Object.fromEntries(Object.entries(s.object).map(([k, v]) => [k, toJsonSchema(v)])),
+    required: Object.keys(s.object),
+    additionalProperties: false,
   };
-  const items: AiItem[] = [];
-  for (const it of list as Record<string, unknown>[]) {
-    const name = String(it?.name ?? '').trim();
-    const grams = n(it?.grams);
-    if (!name || grams <= 0) continue;
-    items.push({
-      name,
-      grams: Math.round(grams),
-      kcal: Math.round(n(it.kcal)),
-      protein: Math.round(n(it.protein_g) * 10) / 10,
-      carbs: Math.round(n(it.carbs_g) * 10) / 10,
-      fat: Math.round(n(it.fat_g) * 10) / 10,
-    });
-  }
-  return { items, notes: typeof obj.notes === 'string' ? obj.notes : '' };
+}
+
+interface JsonRequest {
+  system: string;
+  text: string;
+  imageBase64?: string;
+  shape: Shape;
 }
 
 function parseJson(text: string): unknown {
@@ -87,29 +85,6 @@ function parseJson(text: string): unknown {
 
 const GEMINI = 'https://generativelanguage.googleapis.com/v1beta';
 
-const GEMINI_SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    items: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          name: { type: 'STRING' },
-          grams: { type: 'NUMBER' },
-          kcal: { type: 'NUMBER' },
-          protein_g: { type: 'NUMBER' },
-          carbs_g: { type: 'NUMBER' },
-          fat_g: { type: 'NUMBER' },
-        },
-        required: ['name', 'grams', 'kcal', 'protein_g', 'carbs_g', 'fat_g'],
-      },
-    },
-    notes: { type: 'STRING' },
-  },
-  required: ['items', 'notes'],
-};
-
 async function geminiError(res: Response): Promise<AiError> {
   let detail = '';
   try {
@@ -124,84 +99,57 @@ async function geminiError(res: Response): Promise<AiError> {
   return new AiError(`Gemini respondió con un error (${res.status}). ${detail}`.trim());
 }
 
-/** Lista los modelos disponibles para la clave y elige el "flash" más reciente con soporte de generateContent. */
-export async function pickGeminiModel(key: string): Promise<string> {
+async function listGeminiModels(key: string): Promise<string[]> {
   const res = await fetch(`${GEMINI}/models?pageSize=200`, { headers: { 'x-goog-api-key': key } });
   if (!res.ok) throw await geminiError(res);
   const data = (await res.json()) as { models?: { name: string; supportedGenerationMethods?: string[] }[] };
-  const names = (data.models ?? [])
-    .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
-    .map((m) => m.name.replace(/^models\//, ''))
-    .filter((n) => /^gemini-[\d.]+-flash(-latest)?$/.test(n));
-  if (names.length === 0) throw new AiError('Tu clave de Gemini no tiene modelos compatibles disponibles.');
-  const version = (n: string) => parseFloat(n.split('-')[1]) || 0;
-  names.sort((a, b) => version(b) - version(a));
-  return names[0];
+  return (data.models ?? []).filter((m) => m.supportedGenerationMethods?.includes('generateContent')).map((m) => m.name.replace(/^models\//, ''));
 }
 
-async function geminiGenerate(key: string, model: string, input: AiInput): Promise<Response> {
+const geminiVersion = (name: string) => parseFloat(name.split('-')[1]) || 0;
+
+/** Elige el modelo "flash" más reciente disponible para la clave. */
+export async function pickGeminiModel(key: string): Promise<string> {
+  const names = (await listGeminiModels(key)).filter((n) => /^gemini-[\d.]+-flash(-latest)?$/.test(n));
+  if (names.length === 0) throw new AiError('Tu clave de Gemini no tiene modelos compatibles disponibles.');
+  return names.sort((a, b) => geminiVersion(b) - geminiVersion(a))[0];
+}
+
+function geminiGenerate(key: string, model: string, req: JsonRequest): Promise<Response> {
   const parts: unknown[] = [];
-  if (input.imageBase64) parts.push({ inline_data: { mime_type: 'image/jpeg', data: input.imageBase64 } });
-  parts.push({ text: userText(input) });
+  if (req.imageBase64) parts.push({ inlineData: { mimeType: 'image/jpeg', data: req.imageBase64 } });
+  parts.push({ text: req.text });
   return fetch(`${GEMINI}/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: PROMPT }] },
+      systemInstruction: { parts: [{ text: req.system }] },
       contents: [{ role: 'user', parts }],
-      generationConfig: { responseMimeType: 'application/json', responseSchema: GEMINI_SCHEMA },
+      generationConfig: { responseMimeType: 'application/json', responseSchema: toGeminiSchema(req.shape) },
     }),
   });
 }
 
-async function analyzeWithGemini(ai: AiSettings, input: AiInput, onModel?: (m: string) => void): Promise<AiResult> {
+async function jsonWithGemini(ai: AiSettings, req: JsonRequest, onModel?: (m: string) => void): Promise<unknown> {
   let model = ai.geminiModel || DEFAULT_GEMINI_MODEL;
-  let res = await geminiGenerate(ai.geminiKey, model, input);
+  let res = await geminiGenerate(ai.geminiKey, model, req);
   if (res.status === 404) {
     // El modelo guardado ya no existe: buscar uno vigente y reintentar una vez.
     model = await pickGeminiModel(ai.geminiKey);
     onModel?.(model);
-    res = await geminiGenerate(ai.geminiKey, model, input);
+    res = await geminiGenerate(ai.geminiKey, model, req);
   }
   if (!res.ok) throw await geminiError(res);
-  const data = (await res.json()) as {
-    candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[];
-    promptFeedback?: { blockReason?: string };
-  };
+  const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[] };
   const text = (data.candidates?.[0]?.content?.parts ?? [])
     .filter((p) => !p.thought && typeof p.text === 'string')
     .map((p) => p.text)
     .join('');
   if (!text) throw new AiError('Gemini no devolvió ningún resultado para esta imagen. Prueba con otra foto.');
-  return sanitize(parseJson(text));
+  return parseJson(text);
 }
 
 /* ---------- Claude (API de Anthropic, de pago por uso) ---------- */
-
-const CLAUDE_SCHEMA = {
-  type: 'object',
-  properties: {
-    items: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          name: { type: 'string' },
-          grams: { type: 'number' },
-          kcal: { type: 'number' },
-          protein_g: { type: 'number' },
-          carbs_g: { type: 'number' },
-          fat_g: { type: 'number' },
-        },
-        required: ['name', 'grams', 'kcal', 'protein_g', 'carbs_g', 'fat_g'],
-        additionalProperties: false,
-      },
-    },
-    notes: { type: 'string' },
-  },
-  required: ['items', 'notes'],
-  additionalProperties: false,
-};
 
 /** Modelos que admiten reintento automático en otro modelo si el principal declina la solicitud. */
 const SERVER_FALLBACK_MODELS = new Set(['claude-opus-5-5', 'claude-sonnet-5-5']);
@@ -222,44 +170,42 @@ function claudeError(e: unknown): AiError {
   return new AiError('Ocurrió un error inesperado al consultar a Claude.');
 }
 
-async function analyzeWithClaude(ai: AiSettings, input: AiInput): Promise<AiResult> {
+async function jsonWithClaude(ai: AiSettings, req: JsonRequest): Promise<unknown> {
   const client = claudeClient(ai.claudeKey);
   const model = ai.claudeModel || DEFAULT_CLAUDE_MODEL;
   const content: Anthropic.Beta.BetaContentBlockParam[] = [];
-  if (input.imageBase64) {
-    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: input.imageBase64 } });
+  if (req.imageBase64) {
+    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: req.imageBase64 } });
   }
-  content.push({ type: 'text', text: userText(input) });
+  content.push({ type: 'text', text: req.text });
   const fallback = SERVER_FALLBACK_MODELS.has(model);
   try {
     const res = await client.beta.messages.create({
       model,
       max_tokens: 16000,
-      system: PROMPT,
-      output_config: { effort: 'medium', format: { type: 'json_schema', schema: CLAUDE_SCHEMA } },
+      system: req.system,
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: toJsonSchema(req.shape) } },
       messages: [{ role: 'user', content }],
       ...(fallback ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
     });
     if (res.stop_reason === 'refusal') throw new AiError('Claude no pudo analizar esta imagen. Prueba con otra foto.');
     if (res.stop_reason === 'max_tokens') throw new AiError('La respuesta de Claude quedó incompleta. Intenta de nuevo.');
-    const text = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
-    return sanitize(parseJson(text));
+    return parseJson(res.content.map((b) => (b.type === 'text' ? b.text : '')).join(''));
   } catch (e) {
     throw e instanceof AiError ? e : claudeError(e);
   }
 }
 
-/* ---------- API pública ---------- */
+/* ---------- Núcleo común ---------- */
 
 export function aiReady(ai: AiSettings): boolean {
   return ai.provider === 'gemini' ? ai.geminiKey.trim() !== '' : ai.claudeKey.trim() !== '';
 }
 
-export async function analyzeMeal(ai: AiSettings, input: AiInput, onGeminiModel?: (m: string) => void): Promise<AiResult> {
+async function runJson(ai: AiSettings, req: JsonRequest, onGeminiModel?: (m: string) => void): Promise<unknown> {
   if (!aiReady(ai)) throw new AiError('Primero configura tu clave de IA en Perfil → Inteligencia artificial.');
-  if (!input.imageBase64 && !input.text?.trim()) throw new AiError('Agrega una foto o describe la comida.');
   try {
-    return ai.provider === 'gemini' ? await analyzeWithGemini(ai, input, onGeminiModel) : await analyzeWithClaude(ai, input);
+    return ai.provider === 'gemini' ? await jsonWithGemini(ai, req, onGeminiModel) : await jsonWithClaude(ai, req);
   } catch (e) {
     if (e instanceof AiError) throw e;
     throw new AiError('No se pudo conectar con el servicio de IA. Revisa tu conexión a internet.');
@@ -284,6 +230,58 @@ export async function testAi(ai: AiSettings): Promise<string> {
   }
 }
 
+/* ---------- Comidas ---------- */
+
+const MEAL_PROMPT = `Eres un nutricionista experto en estimar porciones a partir de fotos y descripciones de comida.
+Identifica cada alimento o ingrediente relevante por separado (por ejemplo: arroz, pollo, ensalada, aliño).
+Para cada uno estima el peso de la porción en gramos (o ml si es líquido) y sus calorías y macronutrientes TOTALES para esa porción.
+Usa nombres cortos en español. Sé realista con los tamaños: usa platos, cubiertos y manos como referencia de escala.
+Incluye aceites, salsas y aliños visibles o probables. Si la imagen es una etiqueta nutricional o un producto envasado, usa esos datos.
+Si no hay comida, devuelve una lista vacía y explica por qué en "notes".
+En "notes" escribe una frase breve con los supuestos principales de la estimación.`;
+
+const MEAL_SHAPE: Shape = {
+  object: {
+    items: { array: { object: { name: 'string', grams: 'number', kcal: 'number', protein_g: 'number', carbs_g: 'number', fat_g: 'number' } } },
+    notes: 'string',
+  },
+};
+
+function sanitizeMeal(raw: unknown): AiResult {
+  const obj = (raw ?? {}) as { items?: unknown; notes?: unknown };
+  const list = Array.isArray(obj.items) ? obj.items : [];
+  const n = (v: unknown) => {
+    const x = Number(v);
+    return isFinite(x) && x > 0 ? x : 0;
+  };
+  const items: AiItem[] = [];
+  for (const it of list as Record<string, unknown>[]) {
+    const name = String(it?.name ?? '').trim();
+    const grams = n(it?.grams);
+    if (!name || grams <= 0) continue;
+    items.push({
+      name,
+      grams: Math.round(grams),
+      kcal: Math.round(n(it.kcal)),
+      protein: Math.round(n(it.protein_g) * 10) / 10,
+      carbs: Math.round(n(it.carbs_g) * 10) / 10,
+      fat: Math.round(n(it.fat_g) * 10) / 10,
+    });
+  }
+  return { items, notes: typeof obj.notes === 'string' ? obj.notes : '' };
+}
+
+export async function analyzeMeal(ai: AiSettings, input: AiInput, onGeminiModel?: (m: string) => void): Promise<AiResult> {
+  const extra = input.text?.trim();
+  if (!input.imageBase64 && !extra) throw new AiError('Agrega una foto o describe la comida.');
+  const text = input.imageBase64
+    ? extra
+      ? `Analiza la comida de la foto. Información adicional del usuario: ${extra}`
+      : 'Analiza la comida de la foto.'
+    : `Estima los valores nutricionales de esta comida: ${extra}`;
+  return sanitizeMeal(await runJson(ai, { system: MEAL_PROMPT, text, imageBase64: input.imageBase64, shape: MEAL_SHAPE }, onGeminiModel));
+}
+
 /** Convierte un resultado de IA en un alimento por 100 g para poder ajustar la cantidad después. */
 export function aiItemToFood(item: AiItem): Food {
   const f = 100 / item.grams;
@@ -300,15 +298,136 @@ export function aiItemToFood(item: AiItem): Food {
   };
 }
 
+/* ---------- Equipamiento de ejercicio ---------- */
+
+const EQUIPMENT_PROMPT = `Eres un entrenador personal certificado. El usuario te muestra o describe un equipo de ejercicio que tiene disponible
+(máquina, mancuernas, barra, banco, banda elástica, kettlebell, polea, etc.) y quiere saber qué puede entrenar con él.
+1. Identifica el equipo con su nombre común en español ("equipment").
+2. En "summary" explica en una o dos frases qué es y para qué sirve. Si no es el equipo ideal para el grupo muscular pedido, dilo aquí.
+3. Sugiere entre 3 y 5 ejercicios que se puedan hacer con ESE equipo para el grupo muscular pedido, ordenados del más recomendable al menos.
+   Si no se pidió un grupo muscular, elige los ejercicios más útiles y variados.
+Para cada ejercicio entrega: "name" (nombre común en español), "muscles" (músculos principales), "sets_reps" (por ejemplo "3 series de 10-12"),
+"steps" (3 a 5 pasos breves y concretos para ejecutarlo bien, incluyendo cómo ajustar el equipo si aplica) y "tip" (el error más común o un consejo de seguridad).
+Si la foto no muestra un equipo de ejercicio, devuelve "exercises" vacío y explica por qué en "summary".`;
+
+const EQUIPMENT_SHAPE: Shape = {
+  object: {
+    equipment: 'string',
+    summary: 'string',
+    exercises: { array: { object: { name: 'string', muscles: 'string', sets_reps: 'string', steps: { array: 'string' }, tip: 'string' } } },
+  },
+};
+
+function sanitizeEquipment(raw: unknown): EquipmentResult {
+  const obj = (raw ?? {}) as { equipment?: unknown; summary?: unknown; exercises?: unknown };
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const exercises: EquipmentExercise[] = [];
+  for (const it of (Array.isArray(obj.exercises) ? obj.exercises : []) as Record<string, unknown>[]) {
+    const name = str(it?.name);
+    if (!name) continue;
+    exercises.push({
+      name,
+      muscles: str(it.muscles),
+      setsReps: str(it.sets_reps),
+      steps: (Array.isArray(it.steps) ? it.steps : []).map(str).filter(Boolean).slice(0, 8),
+      tip: str(it.tip),
+    });
+  }
+  return { equipment: str(obj.equipment) || 'Equipo', summary: str(obj.summary), exercises: exercises.slice(0, 8) };
+}
+
+export interface EquipmentInput extends AiInput {
+  /** Grupo muscular que se quiere trabajar; vacío para cualquiera. */
+  muscle?: string;
+}
+
+export async function analyzeEquipment(ai: AiSettings, input: EquipmentInput, onGeminiModel?: (m: string) => void): Promise<EquipmentResult> {
+  const extra = input.text?.trim();
+  if (!input.imageBase64 && !extra) throw new AiError('Agrega una foto del equipo o descríbelo.');
+  const goal = input.muscle ? `Quiero trabajar: ${input.muscle}.` : 'No tengo un grupo muscular específico en mente.';
+  const text = input.imageBase64
+    ? `Este es el equipo que tengo (foto). ${goal}${extra ? ` Información adicional: ${extra}` : ''}`
+    : `El equipo que tengo es: ${extra}. ${goal}`;
+  return sanitizeEquipment(await runJson(ai, { system: EQUIPMENT_PROMPT, text, imageBase64: input.imageBase64, shape: EQUIPMENT_SHAPE }, onGeminiModel));
+}
+
+/* ---------- Imágenes de referencia (solo Gemini) ---------- */
+
+export function canGenerateImages(ai: AiSettings): boolean {
+  return ai.provider === 'gemini' && ai.geminiKey.trim() !== '';
+}
+
+const IMAGE_UNAVAILABLE =
+  'Tu clave de Gemini no permite generar imágenes (Google lo reserva para cuentas con facturación activada). Usa el video o las imágenes de referencia.';
+
+/**
+ * Genera una ilustración del ejercicio con un modelo de imágenes de Gemini.
+ * Los modelos de imagen suelen estar fuera del nivel gratuito, así que un fallo aquí es esperable.
+ */
+export async function generateExerciseImage(
+  ai: AiSettings,
+  exercise: { name: string; muscles: string; steps: string[] },
+  equipment: string,
+  onModel?: (m: string) => void,
+): Promise<string> {
+  if (!canGenerateImages(ai)) throw new AiError('La generación de imágenes solo está disponible con Google Gemini.');
+  const key = ai.geminiKey;
+  let candidates: string[];
+  try {
+    const all = (await listGeminiModels(key)).filter((n) => /^gemini-.*image/.test(n));
+    // Primero el modelo que ya funcionó; después los "lite" (más baratos) y los más recientes.
+    candidates = all.sort((a, b) => Number(b.includes('lite')) - Number(a.includes('lite')) || geminiVersion(b) - geminiVersion(a));
+    if (ai.geminiImageModel && all.includes(ai.geminiImageModel)) candidates = [ai.geminiImageModel, ...candidates.filter((c) => c !== ai.geminiImageModel)];
+  } catch (e) {
+    throw e instanceof AiError ? e : new AiError('No se pudo conectar con Gemini. Revisa tu conexión a internet.');
+  }
+  if (candidates.length === 0) throw new AiError(IMAGE_UNAVAILABLE);
+
+  const prompt = `Ilustración instructiva, limpia y realista, estilo guía de gimnasio, fondo claro y liso, sin texto ni marcas de agua.
+Muestra a una persona con ropa deportiva realizando correctamente el ejercicio "${exercise.name}" con ${equipment}.
+Vista lateral de cuerpo completo, en dos momentos lado a lado: posición inicial y posición final del movimiento.
+Músculos trabajados: ${exercise.muscles}. Técnica: ${exercise.steps.join(' ')}`;
+
+  let lastStatus = 0;
+  for (const model of candidates.slice(0, 3)) {
+    let res: Response;
+    try {
+      res = await fetch(`${GEMINI}/models/${encodeURIComponent(model)}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'] } }),
+      });
+    } catch {
+      throw new AiError('No se pudo conectar con Gemini. Revisa tu conexión a internet.');
+    }
+    lastStatus = res.status;
+    if (!res.ok) continue;
+    const data = (await res.json()) as { candidates?: { content?: { parts?: { inlineData?: { mimeType?: string; data?: string } }[] } }[] };
+    const img = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData;
+    if (img?.data) {
+      onModel?.(model);
+      return `data:${img.mimeType || 'image/png'};base64,${img.data}`;
+    }
+  }
+  if (lastStatus >= 500) throw new AiError('Gemini no está disponible en este momento. Intenta de nuevo en unos segundos.');
+  throw new AiError(IMAGE_UNAVAILABLE);
+}
+
+/* ---------- Fotos ---------- */
+
 /** Reduce y comprime una foto para enviarla a la IA. Devuelve base64 JPEG y una URL de vista previa. */
-export async function prepareImage(file: Blob, maxSide = 1280): Promise<{ base64: string; previewUrl: string }> {
+export async function prepareImage(file: Blob, maxSide = 1280): Promise<{ base64: string; previewUrl: string; thumbUrl: string }> {
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions).catch(() => createImageBitmap(file));
-  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const render = (side: number, quality: number) => {
+    const scale = Math.min(1, side / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', quality);
+  };
+  const previewUrl = render(maxSide, 0.82);
+  const thumbUrl = render(160, 0.7);
   bitmap.close();
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-  return { base64: dataUrl.split(',')[1], previewUrl: dataUrl };
+  return { base64: previewUrl.split(',')[1], previewUrl, thumbUrl };
 }
