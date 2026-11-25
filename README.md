@@ -11,7 +11,7 @@ App personal para Android: contador de calorías con IA, seguimiento de progreso
 - **Progreso**: registro de peso, gráfico con línea de meta, fecha estimada para llegar al objetivo, IMC, calorías de la semana y racha de días.
 - **Rutinas**: genera una rutina semanal de cuerpo completo, torso/pierna o empuje/tirón/pierna según tus días disponibles, equipamiento (gimnasio, mancuernas o peso corporal) y nivel. Registra series, peso y repeticiones con temporizador de descanso.
 - **Equipo y ejercicios**: saca una foto a una máquina, mancuernas o cualquier implemento y la IA lo identifica y sugiere ejercicios para el grupo muscular que elijas, con pasos, consejo de técnica y enlaces a videos e imágenes de referencia. Con Gemini también puede generar una ilustración del ejercicio (Google suele reservar los modelos de imagen para cuentas con facturación activada).
-- **Montaña**: graba cerros, trail, caminatas o salidas en bici con GPS (también con la pantalla apagada): recorrido en mapa topográfico, de calles o satelital, distancia, desnivel, altitud, ritmo, velocidad de ascenso y parciales por kilómetro. Traza rutas tocando el mapa (siguiendo senderos o en línea recta) con su perfil de altitud y tiempo estimado, importa y exporta GPX (compatible con Strava, Suunto o Garmin) y consulta el clima de tu zona con avisos de viento, UV y lluvia.
+- **Montaña**: graba cerros, trail, caminatas o salidas en bici con GPS (también con la pantalla apagada): recorrido en el mapa (relieve propio que funciona sin conexión, calles, topográfico o satelital), distancia, desnivel, altitud, ritmo, velocidad de ascenso y parciales por kilómetro. Traza rutas tocando el mapa (siguiendo senderos o en línea recta) con su perfil de altitud y tiempo estimado, importa y exporta GPX (compatible con Strava, Suunto o Garmin) y consulta el clima de tu zona con avisos de viento, UV y lluvia.
 - **Respaldo**: exporta e importa todo tu historial, incluidos los recorridos, en un archivo.
 
 ## Instalar en tu teléfono
@@ -60,7 +60,16 @@ Mientras el repositorio sea público, cualquiera podría firmar un APK con esa m
 
 ## Servicios externos del módulo de montaña
 
-Todos son gratuitos y no requieren clave: teselas de mapa de OpenTopoMap, OpenStreetMap y Esri; clima y modelo de terreno de [Open-Meteo](https://open-meteo.com); y trazado por senderos de [BRouter](https://brouter.de) sobre datos de OpenStreetMap. Sin conexión el GPS sigue grabando: el mapa de fondo no carga y el desnivel se calcula con la altitud del teléfono.
+Todos son gratuitos y no requieren clave: clima y modelo de terreno de [Open-Meteo](https://open-meteo.com), trazado por senderos de [BRouter](https://brouter.de), y capas de mapa en línea de OpenStreetMap, OpenTopoMap y Esri.
+
+### Mapas sin conexión
+
+En **Montaña → Mapas sin conexión** se descarga una zona para usarla sin señal. La app no guarda imágenes de mapas de terceros (los servidores gratuitos de OpenStreetMap no permiten descargarlas en bloque y Google Maps tampoco): arma su propio mapa con fuentes que sí se pueden guardar.
+
+- **Relieve**: teselas de altitud del conjunto abierto [Terrain Tiles](https://registry.opendata.aws/terrain-tiles/), con las que el teléfono dibuja el sombreado de laderas y las curvas de nivel, y mide el desnivel sin conexión.
+- **Senderos, caminos, ríos y cumbres**: datos de OpenStreetMap (licencia ODbL) obtenidos con la API Overpass.
+
+Sin señal el mapa abre solo la capa «Relieve (sin conexión)». Las capas en línea guardan además lo que ya se vio.
 
 ## Aviso
 

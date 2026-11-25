@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { DEFAULT_CLAUDE_MODEL, DEFAULT_GEMINI_MODEL } from './lib/ai';
 import { computeTargets } from './lib/nutrition';
-import type { ActiveWorkout, AiSettings, OutdoorActivity, PlannedRoute, Entry, Food, MealId, Plan, Profile, SavedEquipment, SetLog, Targets, WeightLog, WorkoutLog } from './lib/types';
+import type { ActiveWorkout, AiSettings, OfflineRegion, OutdoorActivity, PlannedRoute, Entry, Food, MealId, Plan, Profile, SavedEquipment, SetLog, Targets, WeightLog, WorkoutLog } from './lib/types';
 import { todayKey, uid } from './lib/util';
 
 export type ThemePref = 'system' | 'light' | 'dark';
@@ -25,6 +25,7 @@ interface Data {
   /** Actividades de montaña y rutas trazadas (sus recorridos completos viven en IndexedDB). */
   activities: OutdoorActivity[];
   routes: PlannedRoute[];
+  offlineRegions: OfflineRegion[];
   /** Última ubicación conocida, para mostrar el clima sin esperar al GPS. */
   lastLoc: { lat: number; lon: number } | null;
   ai: AiSettings;
@@ -58,6 +59,8 @@ interface Actions {
   removeActivity: (id: string) => void;
   saveRoute: (r: PlannedRoute) => void;
   removeRoute: (id: string) => void;
+  addRegion: (r: OfflineRegion) => void;
+  removeRegion: (id: string) => void;
   setLastLoc: (lat: number, lon: number) => void;
   setAi: (patch: Partial<AiSettings>) => void;
   setTheme: (t: ThemePref) => void;
@@ -79,6 +82,7 @@ const initial: Data = {
   equipment: [],
   activities: [],
   routes: [],
+  offlineRegions: [],
   lastLoc: null,
   ai: { provider: 'gemini', geminiKey: '', geminiModel: DEFAULT_GEMINI_MODEL, claudeKey: '', claudeModel: DEFAULT_CLAUDE_MODEL },
   theme: 'dark',
@@ -193,6 +197,8 @@ export const useStore = create<Data & Actions>()(
       removeActivity: (id) => set((s) => ({ activities: s.activities.filter((a) => a.id !== id) })),
       saveRoute: (r) => set((s) => ({ routes: [r, ...s.routes.filter((x) => x.id !== r.id)] })),
       removeRoute: (id) => set((s) => ({ routes: s.routes.filter((r) => r.id !== id) })),
+      addRegion: (r) => set((s) => ({ offlineRegions: [r, ...s.offlineRegions] })),
+      removeRegion: (id) => set((s) => ({ offlineRegions: s.offlineRegions.filter((r) => r.id !== id) })),
       setLastLoc: (lat, lon) => set({ lastLoc: { lat, lon } }),
 
       setAi: (patch) => set((s) => ({ ai: { ...s.ai, ...patch } })),
@@ -204,7 +210,7 @@ export const useStore = create<Data & Actions>()(
         if (!('entries' in src) || !Array.isArray(src.entries)) throw new Error('Archivo de respaldo no válido');
         const next: Record<string, unknown> = {};
         for (const k of DATA_KEYS) {
-          if (!(k in src) || k === 'ai' || k === 'activeWorkout') continue;
+          if (!(k in src) || k === 'ai' || k === 'activeWorkout' || k === 'offlineRegions') continue;
           // Solo se aceptan valores con la misma forma que los datos de la app.
           const expected = initial[k];
           const value = src[k];
@@ -216,7 +222,7 @@ export const useStore = create<Data & Actions>()(
           if (ok) next[k] = value;
         }
         if (next.theme !== 'light' && next.theme !== 'dark') next.theme = 'system';
-        set({ ...initial, ai: get().ai, ...(next as Partial<Data>), activeWorkout: null });
+        set({ ...initial, ai: get().ai, offlineRegions: get().offlineRegions, ...(next as Partial<Data>), activeWorkout: null });
       },
       resetAll: () => set({ ...initial }),
     }),
@@ -250,7 +256,7 @@ export function lastPerformance(workouts: WorkoutLog[], exerciseId: string): { d
 export function exportData(): string {
   const s = useStore.getState();
   const out: Record<string, unknown> = { app: 'healty', exportedAt: new Date().toISOString() };
-  for (const k of DATA_KEYS) if (k !== 'ai' && k !== 'activeWorkout') out[k] = s[k];
+  for (const k of DATA_KEYS) if (k !== 'ai' && k !== 'activeWorkout' && k !== 'offlineRegions') out[k] = s[k];
   return JSON.stringify(out);
 }
 

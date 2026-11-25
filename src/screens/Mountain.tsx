@@ -1,4 +1,4 @@
-import { Cloud, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, MapPinned, Play, RefreshCw, Route, Sun, Sunrise, Sunset, TriangleAlert, Wind } from 'lucide-react';
+import { Cloud, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, MapPinned, Play, RefreshCw, Route, Sun, Sunrise, Sunset, TriangleAlert, WifiOff, Wind } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import RouteThumb from '../components/RouteThumb';
 import { Spinner } from '../components/ui';
@@ -171,12 +171,7 @@ export default function Mountain() {
 
   return (
     <div className="screen with-tabs">
-      <div className="row spread">
-        <h1 className="title-xl">Montaña</h1>
-        <button className="btn sm secondary" onClick={() => push('/route-plan')}>
-          <Route size={18} /> Trazar ruta
-        </button>
-      </div>
+      <h1 className="title-xl">Montaña</h1>
 
       <div className="hero col" style={{ gap: 14 }}>
         {status === 'idle' ? (
@@ -213,6 +208,15 @@ export default function Mountain() {
             </button>
           </>
         )}
+      </div>
+
+      <div className="rec-controls">
+        <button className="btn sm secondary" style={{ width: '100%' }} onClick={() => push('/route-plan')}>
+          <Route size={18} /> Trazar ruta
+        </button>
+        <button className="btn sm secondary" style={{ width: '100%' }} onClick={() => push('/offline-maps')}>
+          <WifiOff size={18} /> Mapas sin conexión
+        </button>
       </div>
 
       <WeatherCard />

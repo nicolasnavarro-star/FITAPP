@@ -1,7 +1,19 @@
 import { type LatLon, type Pt, haversine, sample } from './geo';
+import { elevationsFromTerrain } from './terrain';
 
-/** Altitudes del modelo de terreno de Open-Meteo para una lista de coordenadas (lotes de 100). */
+/**
+ * Altitudes del terreno para una lista de coordenadas.
+ * Primero se consulta Open-Meteo; si no hay conexión o falla, se usa el relieve guardado en el teléfono.
+ */
 export async function fetchElevations(coords: LatLon[]): Promise<number[]> {
+  try {
+    return await fetchOnlineElevations(coords);
+  } catch {
+    return elevationsFromTerrain(coords);
+  }
+}
+
+async function fetchOnlineElevations(coords: LatLon[]): Promise<number[]> {
   const out: number[] = [];
   for (let i = 0; i < coords.length; i += 100) {
     const batch = coords.slice(i, i + 100);

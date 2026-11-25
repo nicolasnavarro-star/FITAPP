@@ -14,6 +14,7 @@ import AiSettings from './screens/AiSettings';
 import CustomFood from './screens/CustomFood';
 import Equipment from './screens/Equipment';
 import Mountain from './screens/Mountain';
+import OfflineMaps from './screens/OfflineMaps';
 import FoodDetail from './screens/FoodDetail';
 import Onboarding from './screens/Onboarding';
 import PhotoAI from './screens/PhotoAI';
@@ -132,6 +133,8 @@ function Screen({ path }: { path: string }) {
       return <RoutePlan />;
     case '/route':
       return <RouteDetail />;
+    case '/offline-maps':
+      return <OfflineMaps />;
     case '/add':
       return <AddFood />;
     case '/food':

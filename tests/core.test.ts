@@ -3,6 +3,8 @@ import { aiItemToFood } from '../src/lib/ai';
 import { EXERCISES, candidates, getExercise, imagesUrl, videoUrl } from '../src/lib/exercises';
 import { BASE_FOODS, searchFoods } from '../src/lib/foods';
 import { type Pt, TERRAIN, computeStats, estimateKcal, estimateSeconds, fmtDuration, fmtPace, haversine, profile, splits, toGpx } from '../src/lib/geo';
+import { parseOverpass } from '../src/lib/osm';
+import { decodeTerrarium, tilePos, tilesForBounds } from '../src/lib/terrain';
 import { describeWeather } from '../src/lib/weather';
 import { bmr, computeTargets, macrosFor, weeksToGoal } from '../src/lib/nutrition';
 import { mapOffProduct } from '../src/lib/off';
@@ -226,6 +228,52 @@ describe('montaña', () => {
     expect(describeWeather(0).label).toBe('Despejado');
     expect(describeWeather(63).kind).toBe('rain');
     expect(describeWeather(96).kind).toBe('storm');
+  });
+});
+
+describe('mapas sin conexión', () => {
+  it('ubica coordenadas en la cuadrícula de teselas', () => {
+    // Cerro Manquehue: tesela verificada contra el servicio real.
+    const p = tilePos(-33.353, -70.578, 14);
+    expect([Math.floor(p.x), Math.floor(p.y)]).toEqual([4979, 9803]);
+    expect(tilePos(0, 0, 1)).toEqual({ x: 1, y: 1 });
+  });
+
+  it('lista las teselas que cubren una zona en todos los niveles', () => {
+    const tiles = tilesForBounds({ s: -33.40, w: -70.62, n: -33.30, e: -70.50 });
+    expect(new Set(tiles.map((t) => t.z))).toEqual(new Set([10, 11, 12, 13, 14]));
+    expect(tiles.filter((t) => t.z === 10)).toHaveLength(1);
+    expect(tiles.filter((t) => t.z === 14).length).toBeGreaterThan(20);
+    expect(tiles.length).toBeLessThan(120);
+  });
+
+  it('decodifica la altitud de un píxel de relieve', () => {
+    expect(decodeTerrarium(128, 0, 0)).toBe(0);
+    expect(decodeTerrarium(134, 102, 0)).toBe(1638);
+    expect(decodeTerrarium(127, 246, 128)).toBe(-9.5);
+  });
+
+  it('convierte datos de OpenStreetMap y descarta lo que no sirve', () => {
+    const data = parseOverpass({
+      elements: [
+        { type: 'way', tags: { highway: 'path', name: 'Sendero <b>Norte</b>' }, geometry: [{ lat: -33.35, lon: -70.57 }, { lat: -33.351234567, lon: -70.571 }] },
+        { type: 'way', tags: { highway: 'residential', name: 'Calle Uno' }, geometry: [{ lat: -33.4, lon: -70.6 }, { lat: -33.41, lon: -70.6 }] },
+        { type: 'way', tags: { waterway: 'stream' }, geometry: [{ lat: -33.4, lon: -70.6 }, { lat: -33.41, lon: -70.61 }] },
+        { type: 'way', tags: { highway: 'proposed' }, geometry: [{ lat: 1, lon: 1 }, { lat: 2, lon: 2 }] },
+        { type: 'way', tags: { highway: 'path' }, geometry: [{ lat: 1, lon: 1 }] },
+        { type: 'node', lat: -33.353, lon: -70.578, tags: { natural: 'peak', name: 'Cerro Manquehue', ele: '1638' } },
+        { type: 'node', lat: -33.36, lon: -70.58, tags: { natural: 'peak' } },
+        { type: 'node', lat: -33.37, lon: -70.59, tags: { natural: 'spring' } },
+      ],
+    });
+    expect(data.ways.map((w) => w.k)).toEqual(['path', 'minor', 'water']);
+    expect(data.ways[0]).toEqual({ k: 'path', n: 'Sendero <b>Norte</b>', p: [-33.35, -70.57, -33.35123, -70.571] });
+    expect(data.ways[1].n).toBeUndefined();
+    expect(data.pois).toEqual([
+      { k: 'peak', n: 'Cerro Manquehue', ele: 1638, lat: -33.353, lon: -70.578 },
+      { k: 'spring', n: undefined, ele: undefined, lat: -33.37, lon: -70.59 },
+    ]);
+    expect(parseOverpass(null)).toEqual({ ways: [], pois: [] });
   });
 });
 

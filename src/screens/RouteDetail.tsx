@@ -1,4 +1,4 @@
-import { Download, Play, Trash2 } from 'lucide-react';
+import { Download, Play, Trash2, WifiOff } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { ProfileChart } from '../components/charts';
 import MapView from '../components/MapView';
@@ -8,7 +8,7 @@ import { startRecording, useRec } from '../lib/recorder';
 import { safeFileName, shareFile } from '../lib/share';
 import { deleteTrack, loadTrack } from '../lib/tracks';
 import { fmt } from '../lib/util';
-import { back, replace, useRoute } from '../router';
+import { back, push, replace, useRoute } from '../router';
 import { useStore, useUi } from '../store';
 
 export default function RouteDetail() {
@@ -110,6 +110,9 @@ export default function RouteDetail() {
           </div>
         </div>
         <p className="xs muted num">Descenso {fmt(route.descentM)} m · el tiempo es una estimación a paso de cerro, sin contar descansos.</p>
+        <button className="btn sm secondary" style={{ width: '100%' }} onClick={() => push(`/offline-maps?route=${route.id}`)}>
+          <WifiOff size={18} /> Descargar el mapa de esta zona
+        </button>
         {points === null ? (
           <Spinner label="Cargando ruta…" />
         ) : (

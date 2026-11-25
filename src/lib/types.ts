@@ -136,6 +136,19 @@ export interface OutdoorActivity {
   routeId?: string;
 }
 
+/** Zona de mapa descargada para usar sin conexión. */
+export interface OfflineRegion {
+  id: string;
+  name: string;
+  bounds: import('./terrain').Bounds;
+  createdAt: number;
+  /** Teselas de relieve guardadas y su tamaño en bytes. */
+  tiles: number;
+  bytes: number;
+  /** Senderos y caminos guardados. */
+  ways: number;
+}
+
 export interface PlannedRoute {
   id: string;
   name: string;
